@@ -6,7 +6,8 @@ import hospitalLogo from '../assets/hospital_logo.png';
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: HomeIcon, roles: null },
   { to: '/users', label: 'Users', icon: UsersIcon, roles: ['ADMIN'] },
-  { to: '/patients', label: 'Patients', icon: PatientIcon, roles: null },
+  { to: '/patients',      label: 'Patients',     icon: PatientIcon,     roles: null },
+  { to: '/appointments',  label: 'Appointments', icon: CalendarIcon,    roles: null },
   { label: 'Masters', divider: true },
   { to: '/masters/doctors', label: 'Doctors', icon: DoctorIcon, roles: null },
   { to: '/masters/rates', label: 'Rates', icon: RatesIcon, roles: null },
@@ -76,6 +77,19 @@ export function AppShell({ children }) {
         {children}
       </div>
     </div>
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <rect x="1.5" y="2.5" width="13" height="12" rx="1.5" />
+      <path d="M1.5 6.5h13" />
+      <path d="M5 1.5v2M11 1.5v2" />
+      <rect x="4" y="9" width="2" height="2" rx="0.5" fill="currentColor" stroke="none" />
+      <rect x="7" y="9" width="2" height="2" rx="0.5" fill="currentColor" stroke="none" />
+      <rect x="10" y="9" width="2" height="2" rx="0.5" fill="currentColor" stroke="none" />
+    </svg>
   );
 }
 

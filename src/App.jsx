@@ -11,6 +11,7 @@ import PaymentModes from './pages/masters/PaymentModes';
 import PatientsList from './pages/patients/PatientsList';
 import PatientRegistration from './pages/patients/PatientRegistration';
 import PatientDetail from './pages/patients/PatientDetail';
+import AppointmentsDashboard from './pages/appointments/AppointmentsDashboard';
 
 export default function App() {
   return (
@@ -18,26 +19,22 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route
-            path="/users"
-            element={
-              <RequireRole roles={['ADMIN']}>
-                <UsersAdmin />
-              </RequireRole>
-            }
-          />
+          <Route path="/users" element={<RequireRole roles={['ADMIN']}><UsersAdmin /></RequireRole>} />
           <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
 
-          {/* Patient routes — static before dynamic */}
-          <Route path="/patients" element={<RequireAuth><PatientsList /></RequireAuth>} />
-          <Route path="/patients/new" element={<RequireAuth><PatientRegistration /></RequireAuth>} />
+          {/* Patients — static before dynamic */}
+          <Route path="/patients"          element={<RequireAuth><PatientsList /></RequireAuth>} />
+          <Route path="/patients/new"      element={<RequireAuth><PatientRegistration /></RequireAuth>} />
           <Route path="/patients/:id/edit" element={<RequireAuth><PatientRegistration /></RequireAuth>} />
-          <Route path="/patients/:id" element={<RequireAuth><PatientDetail /></RequireAuth>} />
+          <Route path="/patients/:id"      element={<RequireAuth><PatientDetail /></RequireAuth>} />
+
+          {/* Appointments */}
+          <Route path="/appointments" element={<RequireAuth><AppointmentsDashboard /></RequireAuth>} />
 
           {/* Masters */}
-          <Route path="/masters/doctors" element={<RequireAuth><Doctors /></RequireAuth>} />
-          <Route path="/masters/rates" element={<RequireAuth><Rates /></RequireAuth>} />
-          <Route path="/masters/wards" element={<RequireAuth><Wards /></RequireAuth>} />
+          <Route path="/masters/doctors"       element={<RequireAuth><Doctors /></RequireAuth>} />
+          <Route path="/masters/rates"         element={<RequireAuth><Rates /></RequireAuth>} />
+          <Route path="/masters/wards"         element={<RequireAuth><Wards /></RequireAuth>} />
           <Route path="/masters/payment-modes" element={<RequireAuth><PaymentModes /></RequireAuth>} />
 
           <Route path="/" element={<RedirectHome />} />
