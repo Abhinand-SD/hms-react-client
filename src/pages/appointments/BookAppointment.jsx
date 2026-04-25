@@ -46,12 +46,12 @@ function PatientSearch({ value, onChange }) {
 
   function handleInput(v) {
     setQ(v);
-    if (!v.trim()) { setResults([]); setOpen(false); return; }
     clearTimeout(debounceRef.current);
+    if (!v.trim()) { setResults([]); setOpen(false); return; }
     debounceRef.current = setTimeout(async () => {
       setFetching(true);
       try {
-        const { data } = await searchPatients({ q: v.trim(), limit: 8 });
+        const { data } = await searchPatients({ q: v.trim(), limit: 10 });
         setResults(data.data.patients);
         setOpen(true);
       } catch { /* ignore */ }
@@ -66,7 +66,7 @@ function PatientSearch({ value, onChange }) {
     setResults([]);
   }
 
-  function clear() { onChange(null); setQ(''); }
+  function clear() { onChange(null); setQ(''); setResults([]); setOpen(false); }
 
   if (value) {
     return (

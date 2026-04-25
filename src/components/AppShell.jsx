@@ -8,6 +8,7 @@ const NAV = [
   { to: '/users', label: 'Users', icon: UsersIcon, roles: ['ADMIN'] },
   { to: '/patients',      label: 'Patients',     icon: PatientIcon,     roles: null },
   { to: '/appointments',  label: 'Appointments', icon: CalendarIcon,    roles: null },
+  { to: '/queue',         label: 'Live Queue',   icon: QueueIcon,       roles: null },
   { label: 'Masters', divider: true },
   { to: '/masters/doctors', label: 'Doctors', icon: DoctorIcon, roles: null },
   { to: '/masters/rates', label: 'Rates', icon: RatesIcon, roles: null },
@@ -77,6 +78,19 @@ export function AppShell({ children }) {
         {children}
       </div>
     </div>
+  );
+}
+
+function QueueIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <circle cx="2.5" cy="4" r="1" fill="currentColor" stroke="none" />
+      <path d="M5.5 4h9" />
+      <circle cx="2.5" cy="8" r="1" fill="currentColor" stroke="none" />
+      <path d="M5.5 8h6.5" />
+      <circle cx="2.5" cy="12" r="1" fill="currentColor" stroke="none" />
+      <path d="M5.5 12h4" />
+    </svg>
   );
 }
 

@@ -12,17 +12,18 @@ import PatientsList from './pages/patients/PatientsList';
 import PatientRegistration from './pages/patients/PatientRegistration';
 import PatientDetail from './pages/patients/PatientDetail';
 import AppointmentsDashboard from './pages/appointments/AppointmentsDashboard';
+import LiveQueue from './pages/queue/LiveQueue';
 
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/users" element={<RequireRole roles={['ADMIN']}><UsersAdmin /></RequireRole>} />
+          <Route path="/login"     element={<Login />} />
+          <Route path="/users"     element={<RequireRole roles={['ADMIN']}><UsersAdmin /></RequireRole>} />
           <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
 
-          {/* Patients — static before dynamic */}
+          {/* Patients */}
           <Route path="/patients"          element={<RequireAuth><PatientsList /></RequireAuth>} />
           <Route path="/patients/new"      element={<RequireAuth><PatientRegistration /></RequireAuth>} />
           <Route path="/patients/:id/edit" element={<RequireAuth><PatientRegistration /></RequireAuth>} />
@@ -30,6 +31,9 @@ export default function App() {
 
           {/* Appointments */}
           <Route path="/appointments" element={<RequireAuth><AppointmentsDashboard /></RequireAuth>} />
+
+          {/* OPD Live Queue */}
+          <Route path="/queue" element={<RequireAuth><LiveQueue /></RequireAuth>} />
 
           {/* Masters */}
           <Route path="/masters/doctors"       element={<RequireAuth><Doctors /></RequireAuth>} />

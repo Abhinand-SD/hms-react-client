@@ -209,7 +209,7 @@ export default function AppointmentsDashboard() {
     setLoading(true);
     setErr('');
     try {
-      const params = { date, limit: 200 };
+      const params = { date, limit: 100 };
       if (!isDoctor && doctorFilter) params.doctorId = doctorFilter;
       if (statusFilter) params.status = statusFilter;
       const { data } = await listAppointments(params);
