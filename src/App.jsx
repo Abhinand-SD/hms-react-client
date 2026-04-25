@@ -4,6 +4,10 @@ import { RequireAuth, RequireRole, RedirectHome } from './components/RouteGuards
 import Login from './pages/Login';
 import UsersAdmin from './pages/UsersAdmin';
 import Dashboard from './pages/Dashboard';
+import Doctors from './pages/masters/Doctors';
+import Rates from './pages/masters/Rates';
+import Wards from './pages/masters/Wards';
+import PaymentModes from './pages/masters/PaymentModes';
 
 export default function App() {
   return (
@@ -27,6 +31,10 @@ export default function App() {
               </RequireAuth>
             }
           />
+          <Route path="/masters/doctors" element={<RequireAuth><Doctors /></RequireAuth>} />
+          <Route path="/masters/rates" element={<RequireAuth><Rates /></RequireAuth>} />
+          <Route path="/masters/wards" element={<RequireAuth><Wards /></RequireAuth>} />
+          <Route path="/masters/payment-modes" element={<RequireAuth><PaymentModes /></RequireAuth>} />
           <Route path="/" element={<RedirectHome />} />
           <Route path="*" element={<RedirectHome />} />
         </Routes>

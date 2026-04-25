@@ -4,7 +4,7 @@ import { useAuth } from '../lib/auth';
 import { Button } from '../components/Button';
 import { Input, Select } from '../components/Input';
 import { RoleBadge, StatusBadge } from '../components/Badge';
-import hospitalLogo from '../assets/hospital_logo.png';
+import { AppShell } from '../components/AppShell';
 import { CreateUserModal } from '../components/CreateUserModal';
 import { EditUserModal } from '../components/EditUserModal';
 import { ResetPinModal } from '../components/ResetPinModal';
@@ -20,7 +20,7 @@ function fmtDate(s) {
 }
 
 export default function UsersAdmin() {
-  const { user: me, logout } = useAuth();
+  const { user: me } = useAuth();
 
   const [rows, setRows] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
@@ -62,11 +62,6 @@ export default function UsersAdmin() {
     else load();
   }
 
-  async function onLogout() {
-    await logout();
-    window.location.href = '/login';
-  }
-
   function closeModal(refreshed) {
     setModal({ kind: null, user: null });
     if (refreshed) load();
@@ -78,26 +73,8 @@ export default function UsersAdmin() {
   );
 
   return (
-    <div className="min-h-full">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
-          <div className="flex items-center gap-3">
-            <img src={hospitalLogo} alt="HMS logo" className="h-8 w-8 rounded-lg object-cover" />
-            <div className="text-sm font-semibold text-slate-900">HMS Admin</div>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="text-right">
-              <div className="text-xs font-medium text-slate-800">{me?.fullName}</div>
-              <div className="text-[11px] text-slate-500">{me?.role} · {me?.employeeId}</div>
-            </div>
-            <Button variant="secondary" size="sm" onClick={onLogout}>
-              Sign out
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-6xl px-6 py-8">
+    <AppShell>
+      <main className="flex-1 px-8 py-8">
         <div className="mb-6 flex items-end justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold text-slate-900">Users</h1>
@@ -282,6 +259,6 @@ export default function UsersAdmin() {
       <ResetPinModal open={modal.kind === 'reset-pin'} user={modal.user} onClose={closeModal} />
       <DeactivateUserModal open={modal.kind === 'deactivate'} user={modal.user} onClose={closeModal} />
       <ReactivateUserModal open={modal.kind === 'reactivate'} user={modal.user} onClose={closeModal} />
-    </div>
+    </AppShell>
   );
 }
