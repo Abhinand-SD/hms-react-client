@@ -6,6 +6,7 @@ import hospitalLogo from '../assets/hospital_logo.png';
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: HomeIcon, roles: null },
   { to: '/users', label: 'Users', icon: UsersIcon, roles: ['ADMIN'] },
+  { to: '/patients', label: 'Patients', icon: PatientIcon, roles: null },
   { label: 'Masters', divider: true },
   { to: '/masters/doctors', label: 'Doctors', icon: DoctorIcon, roles: null },
   { to: '/masters/rates', label: 'Rates', icon: RatesIcon, roles: null },
@@ -75,6 +76,15 @@ export function AppShell({ children }) {
         {children}
       </div>
     </div>
+  );
+}
+
+function PatientIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <circle cx="8" cy="4.5" r="2.5" />
+      <path d="M2.5 14.5c0-3 2.5-5 5.5-5s5.5 2 5.5 5" />
+    </svg>
   );
 }
 
