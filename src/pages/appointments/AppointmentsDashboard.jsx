@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../lib/auth';
 import { extractError } from '../../lib/api';
 import { api } from '../../lib/api';
-import { listAppointments, updateStatus, cancelAppointment } from '../../api/appointments.api';
+import { listAppointments, updateStatus, cancelAppointment, checkInAppointment } from '../../api/appointments.api';
+import { listVisits } from '../../api/visits.api';
 import { AppShell } from '../../components/AppShell';
 import { Button } from '../../components/Button';
 import { Modal } from '../../components/Modal';
 import { BookAppointment } from './BookAppointment';
+import { CheckoutModal } from '../billing/CheckoutModal';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -196,6 +198,8 @@ export default function AppointmentsDashboard() {
   const [busy, setBusy]               = useState({}); // { [apptId]: true }
   const [bookOpen, setBookOpen]       = useState(false);
   const [cancelTarget, setCancelTarget] = useState(null);
+  const [checkoutVisit, setCheckoutVisit] = useState(null);
+  const [doneApptIds, setDoneApptIds] = useState(() => new Set());
 
   // Load doctors for filter dropdown (Admin/Receptionist only)
   useEffect(() => {
@@ -209,11 +213,30 @@ export default function AppointmentsDashboard() {
     setLoading(true);
     setErr('');
     try {
-      const params = { date, limit: 100 };
-      if (!isDoctor && doctorFilter) params.doctorId = doctorFilter;
-      if (statusFilter) params.status = statusFilter;
-      const { data } = await listAppointments(params);
-      setAppointments(data.data.appointments);
+      const apptParams = { date, limit: 100 };
+      if (!isDoctor && doctorFilter) apptParams.doctorId = doctorFilter;
+      if (statusFilter) apptParams.status = statusFilter;
+
+      // Fetch done visits in parallel so we can count "completed" correctly:
+      // in the new check-in workflow the appointment stays CHECKED_IN and
+      // completion is tracked on the OPD visit (queueStatus DONE).
+      const visitParams = { date, queueStatus: 'DONE', limit: 100 };
+      if (!isDoctor && doctorFilter) visitParams.doctorId = doctorFilter;
+
+      const [apptRes, visitsRes] = await Promise.all([
+        listAppointments(apptParams),
+        listVisits(visitParams),
+      ]);
+
+      setAppointments(apptRes.data.data.appointments);
+
+      // Build a set of appointment IDs that have a linked DONE visit
+      const ids = new Set(
+        (visitsRes.data.data.visits ?? [])
+          .map((v) => v.appointment?.id)
+          .filter(Boolean),
+      );
+      setDoneApptIds(ids);
     } catch (e) {
       setErr(extractError(e));
     } finally {
@@ -239,6 +262,22 @@ export default function AppointmentsDashboard() {
     }
   }
 
+  async function handleCheckIn(apptId) {
+    setBusy((b) => ({ ...b, [apptId]: true }));
+    setErr('');
+    try {
+      const { data } = await checkInAppointment(apptId);
+      setAppointments((prev) =>
+        prev.map((a) => (a.id === apptId ? { ...a, status: 'CHECKED_IN' } : a)),
+      );
+      setCheckoutVisit(data.data.visit);
+    } catch (e) {
+      setErr(extractError(e));
+    } finally {
+      setBusy((b) => ({ ...b, [apptId]: false }));
+    }
+  }
+
   function handleCancelClose(refreshed) {
     setCancelTarget(null);
     if (refreshed) load();
@@ -248,7 +287,9 @@ export default function AppointmentsDashboard() {
   const stats = {
     total:     appointments.length,
     pending:   appointments.filter((a) => ['SCHEDULED', 'CHECKED_IN', 'IN_CONSULTATION'].includes(a.status)).length,
-    completed: appointments.filter((a) => a.status === 'COMPLETED').length,
+    // COMPLETED = explicit terminal status (old direct-status-update flow)
+    //           OR appointment has a DONE visit (new check-in → queue flow)
+    completed: appointments.filter((a) => a.status === 'COMPLETED' || doneApptIds.has(a.id)).length,
     absent:    appointments.filter((a) => ['CANCELLED', 'NO_SHOW'].includes(a.status)).length,
   };
 
@@ -469,11 +510,11 @@ export default function AppointmentsDashboard() {
                                 <button
                                   key={action.next}
                                   disabled={rowBusy}
-                                  onClick={() =>
-                                    action.needsReason
-                                      ? setCancelTarget(appt)
-                                      : doStatusUpdate(appt.id, action.next)
-                                  }
+                                  onClick={() => {
+                                    if (action.needsReason) return setCancelTarget(appt);
+                                    if (action.next === 'CHECKED_IN') return handleCheckIn(appt.id);
+                                    doStatusUpdate(appt.id, action.next);
+                                  }}
                                   className={`rounded-md border px-2.5 py-1 text-xs font-semibold transition focus:outline-none ${action.cls}`}
                                 >
                                   {action.label}
@@ -504,6 +545,11 @@ export default function AppointmentsDashboard() {
       <CancelModal
         appointment={cancelTarget}
         onClose={handleCancelClose}
+      />
+      <CheckoutModal
+        open={!!checkoutVisit}
+        visit={checkoutVisit}
+        onClose={() => { setCheckoutVisit(null); load(); }}
       />
     </AppShell>
   );

@@ -7,3 +7,4 @@ export const getAppointmentById = (id)        => api.get(`/appointments/${id}`);
 export const updateStatus      = (id, data)   => api.patch(`/appointments/${id}/status`, data);
 export const reschedule        = (id, data)   => api.patch(`/appointments/${id}/reschedule`, data);
 export const cancelAppointment = (id, data)   => api.patch(`/appointments/${id}/cancel`, data);
+export const checkInAppointment = (id)        => api.post(`/appointments/${id}/check-in`);

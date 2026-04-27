@@ -9,6 +9,7 @@ const NAV = [
   { to: '/patients',      label: 'Patients',     icon: PatientIcon,     roles: null },
   { to: '/appointments',  label: 'Appointments', icon: CalendarIcon,    roles: null },
   { to: '/queue',         label: 'Live Queue',   icon: QueueIcon,       roles: null },
+  { to: '/billing',       label: 'Billing',      icon: BillingIcon,     roles: ['ADMIN', 'RECEPTIONIST'] },
   { label: 'Masters', divider: true },
   { to: '/masters/doctors', label: 'Doctors', icon: DoctorIcon, roles: null },
   { to: '/masters/rates', label: 'Rates', icon: RatesIcon, roles: null },
@@ -171,6 +172,16 @@ function PayIcon() {
       <rect x="1" y="4" width="14" height="9" rx="1.5" />
       <path d="M1 7h14" />
       <circle cx="5" cy="10.5" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function BillingIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <rect x="2" y="1.5" width="9" height="13" rx="1.5" />
+      <path d="M5 5h3M5 8h3M5 11h2" />
+      <path d="M11 8h3M12.5 6.5v3" />
     </svg>
   );
 }

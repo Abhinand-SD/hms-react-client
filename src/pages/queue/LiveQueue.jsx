@@ -7,6 +7,7 @@ import { AppShell } from '../../components/AppShell';
 import { Button } from '../../components/Button';
 import { Modal } from '../../components/Modal';
 import { RegisterVisitModal } from './RegisterVisitModal';
+import { CheckoutModal } from '../billing/CheckoutModal';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -152,6 +153,34 @@ function VitalPill({ label, value }) {
   );
 }
 
+// ─── Payment status badge ─────────────────────────────────────────────────────
+
+function PaymentBadge({ invoice }) {
+  const status = invoice?.paymentStatus;
+  if (!status || status === 'PENDING') {
+    return (
+      <span className="inline-flex items-center rounded-full bg-red-50 px-1.5 py-0.5 text-[10px] font-bold text-red-600 ring-1 ring-inset ring-red-200">
+        Unpaid
+      </span>
+    );
+  }
+  if (status === 'PAID') {
+    return (
+      <span className="inline-flex items-center rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 ring-1 ring-inset ring-emerald-200">
+        Paid
+      </span>
+    );
+  }
+  if (status === 'PARTIAL') {
+    return (
+      <span className="inline-flex items-center rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 ring-1 ring-inset ring-amber-200">
+        Partial
+      </span>
+    );
+  }
+  return null;
+}
+
 // ─── Visit card ───────────────────────────────────────────────────────────────
 
 const CARD_ACCENT = {
@@ -161,7 +190,7 @@ const CARD_ACCENT = {
   TRANSFERRED:     'border-l-4 border-l-sky-400',
 };
 
-function VisitCard({ visit, userRole, onStatusChange, onVitals, busy }) {
+function VisitCard({ visit, userRole, onStatusChange, onVitals, onPayNow, busy }) {
   const { queueStatus: status, patient, doctor } = visit;
   const allowedNext = ROLE_CAN[userRole] ?? [];
 
@@ -170,6 +199,12 @@ function VisitCard({ visit, userRole, onStatusChange, onVitals, busy }) {
   const canVitals   = status === 'WAITING'         && (userRole === 'ADMIN' || userRole === 'RECEPTIONIST');
   const canCancel   = status === 'WAITING'         && allowedNext.includes('CANCELLED');
   const canTransfer = status === 'WAITING'         && allowedNext.includes('TRANSFERRED');
+  const canPayNow   = visit.invoice?.paymentStatus !== 'PAID'
+                       && (userRole === 'ADMIN' || userRole === 'RECEPTIONIST');
+
+  // Guardrail: doctors cannot start a consultation until the invoice is paid.
+  const isPaid       = visit.invoice?.paymentStatus === 'PAID';
+  const startBlocked = canStart && userRole === 'DOCTOR' && !isPaid;
 
   const elapsed = status === 'IN_CONSULTATION'
     ? elapsedStr(visit.updatedAt)
@@ -181,11 +216,14 @@ function VisitCard({ visit, userRole, onStatusChange, onVitals, busy }) {
   return (
     <div className={`rounded-xl bg-white shadow-sm transition-all hover:shadow-md ${CARD_ACCENT[status] ?? 'border-l-4 border-l-slate-200'} ${busy ? 'opacity-50 pointer-events-none' : ''}`}>
       <div className="p-3.5">
-        {/* Header: OP number + timer */}
+        {/* Header: OP number + payment badge + timer */}
         <div className="mb-2.5 flex items-start justify-between gap-2">
-          <span className="inline-block rounded-md bg-blue-50 px-2 py-0.5 font-mono text-xs font-bold text-blue-700">
-            {visit.opNumber}
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="inline-block rounded-md bg-blue-50 px-2 py-0.5 font-mono text-xs font-bold text-blue-700">
+              {visit.opNumber}
+            </span>
+            <PaymentBadge invoice={visit.invoice} />
+          </div>
           <span className="shrink-0 text-[11px] text-slate-400 tabular-nums">
             ⏱ {elapsed} {elapsedLabel}
           </span>
@@ -236,8 +274,15 @@ function VisitCard({ visit, userRole, onStatusChange, onVitals, busy }) {
           )}
 
           {!busy && canStart && (
-            <button onClick={() => onStatusChange(visit.id, 'IN_CONSULTATION')}
-              className="rounded-md bg-violet-600 px-2.5 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-violet-700">
+            <button
+              onClick={startBlocked ? undefined : () => onStatusChange(visit.id, 'IN_CONSULTATION')}
+              disabled={startBlocked}
+              title={startBlocked ? 'Awaiting Payment' : undefined}
+              className={`rounded-md px-2.5 py-1 text-xs font-bold shadow-sm transition
+                ${startBlocked
+                  ? 'cursor-not-allowed bg-violet-100 text-violet-300'
+                  : 'bg-violet-600 text-white hover:bg-violet-700'}`}
+            >
               ▶ Start
             </button>
           )}
@@ -253,6 +298,13 @@ function VisitCard({ visit, userRole, onStatusChange, onVitals, busy }) {
             <button onClick={() => onStatusChange(visit.id, 'TRANSFERRED')}
               className="rounded-md border border-sky-200 px-2.5 py-1 text-xs font-semibold text-sky-700 transition hover:bg-sky-50">
               ↗ Transfer
+            </button>
+          )}
+
+          {!busy && canPayNow && (
+            <button onClick={() => onPayNow(visit)}
+              className="rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100">
+              💳 Pay Now
             </button>
           )}
 
@@ -285,11 +337,11 @@ const COL_CFG = {
   DONE:            { label: 'Completed',       dot: 'bg-emerald-500', header: 'bg-emerald-50 border-emerald-100', count: 'text-emerald-700 bg-emerald-100' },
 };
 
-function KanbanColumn({ status, visits, userRole, onStatusChange, onVitals, busyMap }) {
+function KanbanColumn({ status, visits, userRole, onStatusChange, onVitals, onPayNow, busyMap }) {
   const cfg = COL_CFG[status];
 
   return (
-    <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm">
+    <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/50 shadow-sm">
       {/* Column header */}
       <div className={`flex items-center justify-between border-b px-4 py-3 ${cfg.header}`}>
         <div className="flex items-center gap-2">
@@ -302,7 +354,7 @@ function KanbanColumn({ status, visits, userRole, onStatusChange, onVitals, busy
       </div>
 
       {/* Scrollable card list */}
-      <div className="flex-1 space-y-3 overflow-y-auto p-3">
+      <div className="flex-1 min-h-0 space-y-3 overflow-y-auto p-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {visits.length === 0 ? (
           <div className="flex flex-col items-center gap-1.5 py-12 text-center">
             <span className="text-2xl opacity-30">
@@ -322,6 +374,7 @@ function KanbanColumn({ status, visits, userRole, onStatusChange, onVitals, busy
               userRole={userRole}
               onStatusChange={onStatusChange}
               onVitals={onVitals}
+              onPayNow={onPayNow}
               busy={!!busyMap[v.id]}
             />
           ))
@@ -348,6 +401,7 @@ export default function LiveQueue() {
   const [lastRefresh, setLastRefresh] = useState(null);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [vitalsTarget, setVitalsTarget] = useState(null);
+  const [checkoutVisit, setCheckoutVisit] = useState(null);
   const timerRef = useRef(null);
 
   const isToday = date === todayStr();
@@ -502,13 +556,14 @@ export default function LiveQueue() {
               <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-slate-200 border-t-blue-600" />
             </div>
           ) : (
-            <div className="grid flex-1 grid-cols-1 gap-4 overflow-hidden md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 overflow-hidden md:grid-cols-3 h-[calc(100vh-8rem)]">
               <KanbanColumn
                 status="WAITING"
                 visits={waiting}
                 userRole={me?.role}
                 onStatusChange={onStatusChange}
                 onVitals={setVitalsTarget}
+                onPayNow={setCheckoutVisit}
                 busyMap={busyMap}
               />
               <KanbanColumn
@@ -517,6 +572,7 @@ export default function LiveQueue() {
                 userRole={me?.role}
                 onStatusChange={onStatusChange}
                 onVitals={setVitalsTarget}
+                onPayNow={setCheckoutVisit}
                 busyMap={busyMap}
               />
               <KanbanColumn
@@ -525,6 +581,7 @@ export default function LiveQueue() {
                 userRole={me?.role}
                 onStatusChange={onStatusChange}
                 onVitals={setVitalsTarget}
+                onPayNow={setCheckoutVisit}
                 busyMap={busyMap}
               />
             </div>
@@ -535,11 +592,22 @@ export default function LiveQueue() {
       {/* ── Modals ── */}
       <RegisterVisitModal
         open={registerOpen}
-        onClose={(refreshed) => { setRegisterOpen(false); if (refreshed) load(); }}
+        onClose={(refreshed, newVisit) => {
+          setRegisterOpen(false);
+          if (refreshed) {
+            load();                                    // refresh queue so card appears
+            if (newVisit) setCheckoutVisit(newVisit); // open checkout immediately
+          }
+        }}
       />
       <VitalsModal
         visit={vitalsTarget}
         onClose={handleVitalsClose}
+      />
+      <CheckoutModal
+        open={!!checkoutVisit}
+        visit={checkoutVisit}
+        onClose={() => { setCheckoutVisit(null); load(true); }}
       />
     </AppShell>
   );

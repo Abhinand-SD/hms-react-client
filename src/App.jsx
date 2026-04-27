@@ -13,6 +13,7 @@ import PatientRegistration from './pages/patients/PatientRegistration';
 import PatientDetail from './pages/patients/PatientDetail';
 import AppointmentsDashboard from './pages/appointments/AppointmentsDashboard';
 import LiveQueue from './pages/queue/LiveQueue';
+import BillingDashboard from './pages/billing/BillingDashboard';
 
 export default function App() {
   return (
@@ -34,6 +35,9 @@ export default function App() {
 
           {/* OPD Live Queue */}
           <Route path="/queue" element={<RequireAuth><LiveQueue /></RequireAuth>} />
+
+          {/* Billing & Checkout */}
+          <Route path="/billing" element={<RequireRole roles={['ADMIN', 'RECEPTIONIST']}><BillingDashboard /></RequireRole>} />
 
           {/* Masters */}
           <Route path="/masters/doctors"       element={<RequireAuth><Doctors /></RequireAuth>} />

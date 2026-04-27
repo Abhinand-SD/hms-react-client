@@ -6,21 +6,53 @@ export const api = axios.create({
   withCredentials: true,
 });
 
+let isRefreshing = false;
+let pendingQueue = [];
+
+function drainQueue(error) {
+  pendingQueue.forEach(({ resolve, reject }) => (error ? reject(error) : resolve()));
+  pendingQueue = [];
+}
+
 api.interceptors.response.use(
   (res) => res,
-  (err) => {
+  async (err) => {
     const status = err.response?.status;
     const path = err.config?.url || '';
-    const isAuthBootstrap =
-      path.endsWith('/auth/me') ||
+    const skipRefresh =
       path.endsWith('/auth/login') ||
-      path.endsWith('/auth/logout');
-    if (status === 401 && !isAuthBootstrap) {
-      if (!location.pathname.startsWith('/login')) {
-        location.replace('/login');
-      }
+      path.endsWith('/auth/logout') ||
+      path.endsWith('/auth/refresh');
+
+    if (status !== 401 || skipRefresh) {
+      return Promise.reject(err);
     }
-    return Promise.reject(err);
+
+    if (err.config._retry) {
+      if (!location.pathname.startsWith('/login')) location.replace('/login');
+      return Promise.reject(err);
+    }
+
+    if (isRefreshing) {
+      return new Promise((resolve, reject) => pendingQueue.push({ resolve, reject })).then(() =>
+        api({ ...err.config, _retry: true }),
+      );
+    }
+
+    isRefreshing = true;
+    err.config._retry = true;
+
+    try {
+      await api.post('/auth/refresh');
+      drainQueue(null);
+      return api(err.config);
+    } catch (refreshErr) {
+      drainQueue(refreshErr);
+      if (!location.pathname.startsWith('/login')) location.replace('/login');
+      return Promise.reject(refreshErr);
+    } finally {
+      isRefreshing = false;
+    }
   },
 );
 

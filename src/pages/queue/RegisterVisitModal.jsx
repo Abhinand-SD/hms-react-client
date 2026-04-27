@@ -169,8 +169,8 @@ export function RegisterVisitModal({ open, onClose }) {
         if (form.weight) payload.weight = parseFloat(form.weight);
         if (form.spo2) payload.spo2 = parseInt(form.spo2, 10);
       }
-      await registerVisit(payload);
-      onClose(true);
+      const { data } = await registerVisit(payload);
+      onClose(true, data.data.visit);
     } catch (err) {
       setGlobalErr(extractError(err));
     } finally {
