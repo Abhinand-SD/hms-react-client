@@ -2,7 +2,7 @@ import axios from 'axios';
 
 export const api = axios.create({
   // This tells Vite: "Use the live Render URL if we are on Vercel, otherwise use the local one for testing."
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/api', //api
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api', //api
   timeout: 15000,
   withCredentials: true,
 });
