@@ -7,7 +7,8 @@ import { AppShell } from '../../components/AppShell';
 import { Button } from '../../components/Button';
 import { Modal } from '../../components/Modal';
 import { RegisterVisitModal } from './RegisterVisitModal';
-import { CheckoutModal } from '../billing/CheckoutModal';
+import { ConsultationModal } from '../billing/ConsultationModal';
+import { TestsBillingModal } from '../billing/TestsBillingModal';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -155,8 +156,9 @@ function VitalPill({ label, value }) {
 
 // ─── Payment status badge ─────────────────────────────────────────────────────
 
-function PaymentBadge({ invoice }) {
-  const status = invoice?.paymentStatus;
+function PaymentBadge({ invoices }) {
+  const consultInv = invoices?.find((i) => i.invoiceType === 'CONSULTATION');
+  const status = consultInv?.paymentStatus;
   if (!status || status === 'PENDING') {
     return (
       <span className="inline-flex items-center rounded-full bg-red-50 px-1.5 py-0.5 text-[10px] font-bold text-red-600 ring-1 ring-inset ring-red-200">
@@ -190,7 +192,7 @@ const CARD_ACCENT = {
   TRANSFERRED:     'border-l-4 border-l-sky-400',
 };
 
-function VisitCard({ visit, userRole, onStatusChange, onVitals, onPayNow, busy }) {
+function VisitCard({ visit, userRole, onStatusChange, onVitals, onPayConsultation, onAddTests, busy }) {
   const { queueStatus: status, patient, doctor } = visit;
   const allowedNext = ROLE_CAN[userRole] ?? [];
 
@@ -199,12 +201,23 @@ function VisitCard({ visit, userRole, onStatusChange, onVitals, onPayNow, busy }
   const canVitals   = status === 'WAITING'         && (userRole === 'ADMIN' || userRole === 'RECEPTIONIST');
   const canCancel   = status === 'WAITING'         && allowedNext.includes('CANCELLED');
   const canTransfer = status === 'WAITING'         && allowedNext.includes('TRANSFERRED');
-  const canPayNow   = visit.invoice?.paymentStatus !== 'PAID'
-                       && (userRole === 'ADMIN' || userRole === 'RECEPTIONIST');
 
-  // Guardrail: doctors cannot start a consultation until the invoice is paid.
-  const isPaid       = visit.invoice?.paymentStatus === 'PAID';
-  const startBlocked = canStart && userRole === 'DOCTOR' && !isPaid;
+  const consultInv  = visit.invoices?.find((i) => i.invoiceType === 'CONSULTATION') ?? null;
+  const consultPaid = consultInv?.paymentStatus === 'PAID';
+
+  // Phase 1: collect consultation fee — shown for any non-DONE visit where fee not yet paid
+  const canPayConsultation = !consultPaid
+                              && status !== 'DONE'
+                              && status !== 'TRANSFERRED'
+                              && (userRole === 'ADMIN' || userRole === 'RECEPTIONIST');
+
+  // Phase 2: add tests — shown for DONE/TRANSFERRED visits once consultation is paid
+  const canAddTests = (status === 'DONE' || status === 'TRANSFERRED')
+                      && consultPaid
+                      && (userRole === 'ADMIN' || userRole === 'RECEPTIONIST');
+
+  // Guardrail: doctors cannot start a consultation until the consultation invoice is paid.
+  const startBlocked = canStart && userRole === 'DOCTOR' && !consultPaid;
 
   const elapsed = status === 'IN_CONSULTATION'
     ? elapsedStr(visit.updatedAt)
@@ -222,7 +235,7 @@ function VisitCard({ visit, userRole, onStatusChange, onVitals, onPayNow, busy }
             <span className="inline-block rounded-md bg-blue-50 px-2 py-0.5 font-mono text-xs font-bold text-blue-700">
               {visit.opNumber}
             </span>
-            <PaymentBadge invoice={visit.invoice} />
+            <PaymentBadge invoices={visit.invoices} />
           </div>
           <span className="shrink-0 text-[11px] text-slate-400 tabular-nums">
             ⏱ {elapsed} {elapsedLabel}
@@ -301,10 +314,17 @@ function VisitCard({ visit, userRole, onStatusChange, onVitals, onPayNow, busy }
             </button>
           )}
 
-          {!busy && canPayNow && (
-            <button onClick={() => onPayNow(visit)}
+          {!busy && canPayConsultation && (
+            <button onClick={() => onPayConsultation(visit)}
               className="rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100">
-              💳 Pay Now
+              💳 Pay Consultation
+            </button>
+          )}
+
+          {!busy && canAddTests && (
+            <button onClick={() => onAddTests(visit)}
+              className="rounded-md border border-teal-300 bg-teal-50 px-2.5 py-1 text-xs font-bold text-teal-700 transition hover:bg-teal-100">
+              🧪 Add Tests
             </button>
           )}
 
@@ -337,7 +357,7 @@ const COL_CFG = {
   DONE:            { label: 'Completed',       dot: 'bg-emerald-500', header: 'bg-emerald-50 border-emerald-100', count: 'text-emerald-700 bg-emerald-100' },
 };
 
-function KanbanColumn({ status, visits, userRole, onStatusChange, onVitals, onPayNow, busyMap }) {
+function KanbanColumn({ status, visits, userRole, onStatusChange, onVitals, onPayConsultation, onAddTests, busyMap }) {
   const cfg = COL_CFG[status];
 
   return (
@@ -374,7 +394,8 @@ function KanbanColumn({ status, visits, userRole, onStatusChange, onVitals, onPa
               userRole={userRole}
               onStatusChange={onStatusChange}
               onVitals={onVitals}
-              onPayNow={onPayNow}
+              onPayConsultation={onPayConsultation}
+              onAddTests={onAddTests}
               busy={!!busyMap[v.id]}
             />
           ))
@@ -401,7 +422,8 @@ export default function LiveQueue() {
   const [lastRefresh, setLastRefresh] = useState(null);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [vitalsTarget, setVitalsTarget] = useState(null);
-  const [checkoutVisit, setCheckoutVisit] = useState(null);
+  const [consultationTarget, setConsultationTarget] = useState(null);
+  const [testsTarget, setTestsTarget] = useState(null);
   const timerRef = useRef(null);
 
   const isToday = date === todayStr();
@@ -563,7 +585,8 @@ export default function LiveQueue() {
                 userRole={me?.role}
                 onStatusChange={onStatusChange}
                 onVitals={setVitalsTarget}
-                onPayNow={setCheckoutVisit}
+                onPayConsultation={setConsultationTarget}
+                onAddTests={setTestsTarget}
                 busyMap={busyMap}
               />
               <KanbanColumn
@@ -572,7 +595,8 @@ export default function LiveQueue() {
                 userRole={me?.role}
                 onStatusChange={onStatusChange}
                 onVitals={setVitalsTarget}
-                onPayNow={setCheckoutVisit}
+                onPayConsultation={setConsultationTarget}
+                onAddTests={setTestsTarget}
                 busyMap={busyMap}
               />
               <KanbanColumn
@@ -581,7 +605,8 @@ export default function LiveQueue() {
                 userRole={me?.role}
                 onStatusChange={onStatusChange}
                 onVitals={setVitalsTarget}
-                onPayNow={setCheckoutVisit}
+                onPayConsultation={setConsultationTarget}
+                onAddTests={setTestsTarget}
                 busyMap={busyMap}
               />
             </div>
@@ -596,7 +621,7 @@ export default function LiveQueue() {
           setRegisterOpen(false);
           if (refreshed) {
             load();                                    // refresh queue so card appears
-            if (newVisit) setCheckoutVisit(newVisit); // open checkout immediately
+            if (newVisit) setConsultationTarget(newVisit); // open consultation billing immediately
           }
         }}
       />
@@ -604,10 +629,15 @@ export default function LiveQueue() {
         visit={vitalsTarget}
         onClose={handleVitalsClose}
       />
-      <CheckoutModal
-        open={!!checkoutVisit}
-        visit={checkoutVisit}
-        onClose={() => { setCheckoutVisit(null); load(true); }}
+      <ConsultationModal
+        open={!!consultationTarget}
+        visit={consultationTarget}
+        onClose={() => { setConsultationTarget(null); load(true); }}
+      />
+      <TestsBillingModal
+        open={!!testsTarget}
+        visit={testsTarget}
+        onClose={() => { setTestsTarget(null); load(true); }}
       />
     </AppShell>
   );

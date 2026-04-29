@@ -3,12 +3,12 @@ import { useAuth } from '../../lib/auth';
 import { extractError } from '../../lib/api';
 import { api } from '../../lib/api';
 import { listAppointments, updateStatus, cancelAppointment, checkInAppointment } from '../../api/appointments.api';
-import { listVisits } from '../../api/visits.api';
+import { listVisits, updateQueueStatus } from '../../api/visits.api';
 import { AppShell } from '../../components/AppShell';
 import { Button } from '../../components/Button';
 import { Modal } from '../../components/Modal';
 import { BookAppointment } from './BookAppointment';
-import { CheckoutModal } from '../billing/CheckoutModal';
+import { ConsultationModal } from '../billing/ConsultationModal';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -198,7 +198,7 @@ export default function AppointmentsDashboard() {
   const [busy, setBusy]               = useState({}); // { [apptId]: true }
   const [bookOpen, setBookOpen]       = useState(false);
   const [cancelTarget, setCancelTarget] = useState(null);
-  const [checkoutVisit, setCheckoutVisit] = useState(null);
+  const [consultationVisit, setConsultationVisit] = useState(null);
   const [doneApptIds, setDoneApptIds] = useState(() => new Set());
 
   // Load doctors for filter dropdown (Admin/Receptionist only)
@@ -270,7 +270,7 @@ export default function AppointmentsDashboard() {
       setAppointments((prev) =>
         prev.map((a) => (a.id === apptId ? { ...a, status: 'CHECKED_IN' } : a)),
       );
-      setCheckoutVisit(data.data.visit);
+      setConsultationVisit(data.data.visit);
     } catch (e) {
       setErr(extractError(e));
     } finally {
@@ -546,10 +546,22 @@ export default function AppointmentsDashboard() {
         appointment={cancelTarget}
         onClose={handleCancelClose}
       />
-      <CheckoutModal
-        open={!!checkoutVisit}
-        visit={checkoutVisit}
-        onClose={() => { setCheckoutVisit(null); load(); }}
+      <ConsultationModal
+        open={!!consultationVisit}
+        visit={consultationVisit}
+        onClose={async (paid) => {
+          const visitToQueue = consultationVisit;
+          setConsultationVisit(null);
+          // On successful payment, ensure the visit is in WAITING so it shows
+          // up in the Live Queue without an extra manual click. We swallow
+          // any error (e.g. already WAITING) — the reload will reflect truth.
+          if (paid && visitToQueue?.id && visitToQueue.queueStatus !== 'WAITING') {
+            try {
+              await updateQueueStatus(visitToQueue.id, { queueStatus: 'WAITING' });
+            } catch { /* already in queue or backend rejection — ignore */ }
+          }
+          load();
+        }}
       />
     </AppShell>
   );

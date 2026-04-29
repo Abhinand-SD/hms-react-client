@@ -8,6 +8,7 @@ import Doctors from './pages/masters/Doctors';
 import Rates from './pages/masters/Rates';
 import Wards from './pages/masters/Wards';
 import PaymentModes from './pages/masters/PaymentModes';
+import Services from './pages/masters/Services';
 import PatientsList from './pages/patients/PatientsList';
 import PatientRegistration from './pages/patients/PatientRegistration';
 import PatientDetail from './pages/patients/PatientDetail';
@@ -44,6 +45,7 @@ export default function App() {
           <Route path="/masters/rates"         element={<RequireAuth><Rates /></RequireAuth>} />
           <Route path="/masters/wards"         element={<RequireAuth><Wards /></RequireAuth>} />
           <Route path="/masters/payment-modes" element={<RequireAuth><PaymentModes /></RequireAuth>} />
+          <Route path="/masters/services"      element={<RequireRole roles={['ADMIN']}><Services /></RequireRole>} />
 
           <Route path="/" element={<RedirectHome />} />
           <Route path="*" element={<RedirectHome />} />

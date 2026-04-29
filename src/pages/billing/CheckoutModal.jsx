@@ -2,12 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import { api, extractError } from '../../lib/api';
 import { Modal } from '../../components/Modal';
 import { Button } from '../../components/Button';
+import { InvoicePrintView } from '../../components/InvoicePrintView';
+import { listServices } from '../../api/services.api';
+import { checkoutVisit, getInvoiceById } from '../../api/billing.api';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const INP = 'block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:bg-slate-50 disabled:text-slate-400';
 
 const STAGE = {
+  LOADING:     'loading',
+  SELECT:      'select',
   STAGING:     'staging',
   READY:       'ready',
   POS_WAITING: 'pos_waiting',
@@ -31,31 +36,12 @@ function calcRemaining(invoice) {
   return Math.max(0, Number(invoice.netAmount) - paid);
 }
 
-async function stageInvoice(visitId) {
-  try {
-    const { data } = await api.post(`/invoices/generate-from-visit/${visitId}`);
-    return data.data.invoice;
-  } catch (err) {
-    if (err.response?.status === 409) {
-      const invoiceId = err.response?.data?.error?.details?.invoiceId;
-      if (invoiceId) {
-        const { data } = await api.get(`/invoices/${invoiceId}`);
-        return data.data.invoice;
-      }
-    }
-    throw err;
-  }
-}
-
-// Auto-select payment modes from the fetched list.
-// Prioritises exact code === 'CASH' so the Cash tab always maps to the right mode.
 function pickModes(modeList) {
   const cashMode =
     modeList.find((m) => m.code === 'CASH') ??
     modeList.find((m) => /cash/i.test(m.code) || /cash/i.test(m.name)) ??
     modeList[0];
 
-  // Explicitly exclude the cash mode from POS candidates.
   const posMode =
     modeList.find(
       (m) =>
@@ -69,7 +55,95 @@ function pickModes(modeList) {
   return { cashMode, posMode };
 }
 
-// ─── Mode badge (replaces dropdown in Cash + POS tabs) ───────────────────────
+// ─── Service selection stage ──────────────────────────────────────────────────
+
+function SelectServicesStage({ visit, services, selected, onToggle, onProceed, busy }) {
+  const consultFee = Number(
+    visit?.appointment?.consultationFee ?? visit?.doctor?.consultationFee ?? 0,
+  );
+  const selectedServices = services.filter((s) => selected.has(s.id));
+  const testTotal    = selectedServices.reduce((sum, s) => sum + Number(s.price), 0);
+  const grandTotal   = consultFee + testTotal;
+
+  return (
+    <div className="space-y-4">
+      {/* Patient card */}
+      <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+        <p className="text-sm font-bold text-slate-900">
+          {visit?.patient?.firstName} {visit?.patient?.lastName ?? ''}
+        </p>
+        <p className="font-mono text-[11px] text-slate-500">
+          {visit?.patient?.uhid} · {visit?.opNumber}
+        </p>
+        {visit?.doctor?.name && (
+          <p className="mt-0.5 text-xs text-slate-600">Dr. {visit.doctor.name}</p>
+        )}
+      </div>
+
+      {/* Tests selection */}
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+          Select Prescribed Tests
+        </p>
+        {services.length === 0 ? (
+          <p className="text-sm text-slate-400 italic">No active tests configured.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {services.map((svc) => (
+              <label
+                key={svc.id}
+                className={`flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2.5 transition
+                  ${selected.has(svc.id)
+                    ? 'border-blue-300 bg-blue-50 ring-1 ring-blue-300'
+                    : 'border-slate-200 bg-white hover:bg-slate-50'}`}
+              >
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(svc.id)}
+                    onChange={() => onToggle(svc.id)}
+                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm font-medium text-slate-800">{svc.serviceName}</span>
+                </div>
+                <span className="text-sm font-semibold text-slate-700">{fmtCurrency(svc.price)}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Live billing summary */}
+      <div className="rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
+        <div className="flex justify-between px-4 py-2.5 text-sm">
+          <span className="text-slate-500">Consultation Fee</span>
+          <span className="font-semibold text-slate-800">{fmtCurrency(consultFee)}</span>
+        </div>
+        {selectedServices.map((s) => (
+          <div key={s.id} className="flex justify-between px-4 py-2.5 text-sm">
+            <span className="text-slate-500">{s.serviceName}</span>
+            <span className="font-semibold text-slate-800">{fmtCurrency(s.price)}</span>
+          </div>
+        ))}
+        <div className="flex justify-between px-4 py-3">
+          <span className="text-sm font-bold text-slate-900">Total</span>
+          <span className="text-lg font-bold text-blue-700">{fmtCurrency(grandTotal)}</span>
+        </div>
+      </div>
+
+      <button
+        onClick={onProceed}
+        disabled={busy}
+        className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+      >
+        {busy ? <SpinnerIcon /> : <ArrowRightIcon />}
+        {busy ? 'Creating invoice…' : 'Proceed to Payment'}
+      </button>
+    </div>
+  );
+}
+
+// ─── Mode badge ───────────────────────────────────────────────────────────────
 
 function ModeBadge({ name, icon: Icon }) {
   return (
@@ -82,15 +156,13 @@ function ModeBadge({ name, icon: Icon }) {
   );
 }
 
-// ─── Payment‑tab sub-components ───────────────────────────────────────────────
+// ─── Payment tabs ─────────────────────────────────────────────────────────────
 
 function CashTab({ modeName, cashAmt, setCashAmt, remaining, busy, onPay }) {
   const valid = Number(cashAmt) > 0 && Number(cashAmt) <= remaining + 0.01;
-
   return (
     <div className="space-y-3.5">
       <ModeBadge name={modeName} icon={CashIcon} />
-
       <div className="flex flex-col gap-1.5">
         <label className="text-xs font-semibold text-slate-600">Amount</label>
         <div className="relative">
@@ -103,7 +175,6 @@ function CashTab({ modeName, cashAmt, setCashAmt, remaining, busy, onPay }) {
           />
         </div>
       </div>
-
       <button
         onClick={onPay}
         disabled={!valid || busy}
@@ -120,17 +191,14 @@ function PosTab({ modeName, remaining, busy, onSend }) {
   return (
     <div className="space-y-3.5">
       <ModeBadge name={modeName} icon={CardIcon} />
-
       <div className="rounded-xl bg-blue-50 border border-blue-100 px-4 py-3 flex items-center justify-between">
         <span className="text-sm text-blue-700 font-medium">Amount to charge</span>
         <span className="text-xl font-bold text-blue-900">{fmtCurrency(remaining)}</span>
       </div>
-
       <div className="rounded-lg bg-amber-50 border border-amber-100 px-3 py-2.5 text-xs text-amber-700">
         <span className="font-semibold">Cloud-to-POS:</span> Clicking below pushes the payment
         request to the Pine Labs terminal. The customer taps / swipes on the hardware device.
       </div>
-
       <button
         onClick={onSend}
         disabled={busy}
@@ -157,15 +225,13 @@ function SplitTab({ cashModeName, nonCashModes, splitCashAmt, setSplitCashAmt, s
         </div>
       </div>
 
-      {/* Cash portion — mode is auto-assigned, no dropdown */}
       <div className="rounded-xl border border-slate-200 p-3.5 space-y-2.5">
         <p className="text-xs font-bold text-slate-700 uppercase tracking-wide">Cash Portion</p>
         <ModeBadge name={cashModeName} icon={CashIcon} />
         <div className="relative">
           <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-500">₹</span>
           <input
-            type="number" min="0.01" step="0.01"
-            placeholder="0.00"
+            type="number" min="0.01" step="0.01" placeholder="0.00"
             value={splitCashAmt}
             onChange={(e) => setSplitCashAmt(e.target.value)}
             className={`${INP} pl-8`}
@@ -173,7 +239,6 @@ function SplitTab({ cashModeName, nonCashModes, splitCashAmt, setSplitCashAmt, s
         </div>
       </div>
 
-      {/* Online / Card portion — user picks from non-cash modes */}
       <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3.5 space-y-2.5">
         <p className="text-xs font-bold text-blue-700 uppercase tracking-wide">Online / Card Portion</p>
         <select
@@ -214,7 +279,6 @@ function SplitTab({ cashModeName, nonCashModes, splitCashAmt, setSplitCashAmt, s
 function PosWaitingScreen({ ptrn, remaining, modeName }) {
   return (
     <div className="flex flex-col items-center gap-5 py-6 text-center">
-      {/* Terminal icon with live-connection indicator */}
       <div className="relative inline-flex">
         <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-slate-800 shadow-xl">
           <PosTerminalLargeIcon />
@@ -224,30 +288,23 @@ function PosWaitingScreen({ ptrn, remaining, modeName }) {
           <span className="relative inline-flex h-4 w-4 rounded-full bg-green-500 border-2 border-white" />
         </span>
       </div>
-
       <div>
         <p className="text-base font-bold text-slate-900">Waiting for customer to tap card…</p>
         <p className="mt-1 text-sm text-slate-500">Polling terminal — do not close this window</p>
       </div>
-
       <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm">
         <span className="text-xs font-semibold text-slate-500">Terminal Ref</span>
         <span className="font-mono font-bold text-slate-900 tracking-wider">{ptrn}</span>
       </div>
-
-      {/* Indeterminate spinner — replaces the old fixed-duration progress bar */}
       <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-slate-200 border-t-blue-600" />
-
-      <p className="text-sm font-bold text-blue-700">
-        {fmtCurrency(remaining)} · {modeName}
-      </p>
+      <p className="text-sm font-bold text-blue-700">{fmtCurrency(remaining)} · {modeName}</p>
     </div>
   );
 }
 
 // ─── Success screen ───────────────────────────────────────────────────────────
 
-function SuccessScreen({ data, onClose }) {
+function SuccessScreen({ data, onClose, onPrint }) {
   return (
     <div className="flex flex-col items-center gap-5 py-6 text-center">
       <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 ring-4 ring-emerald-50">
@@ -282,12 +339,20 @@ function SuccessScreen({ data, onClose }) {
         )}
       </div>
 
-      <button
-        onClick={onClose}
-        className="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
-      >
-        Close
-      </button>
+      <div className="flex w-full gap-2">
+        <button
+          onClick={onPrint}
+          className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+        >
+          <PrintIcon /> Print A5 Receipt
+        </button>
+        <button
+          onClick={onClose}
+          className="flex-1 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+        >
+          Close
+        </button>
+      </div>
     </div>
   );
 }
@@ -295,39 +360,35 @@ function SuccessScreen({ data, onClose }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function CheckoutModal({ open, onClose, visit }) {
-  const [stage, setStage]         = useState(STAGE.STAGING);
-  const [invoice, setInvoice]     = useState(null);
-  const [modes, setModes]         = useState([]);
-  const [payTab, setPayTab]       = useState('cash');
+  const [stage, setStage]       = useState(STAGE.LOADING);
+  const [invoice, setInvoice]   = useState(null);
+  const [services, setServices] = useState([]);
+  const [selected, setSelected] = useState(new Set());
+  const [modes, setModes]       = useState([]);
+  const [payTab, setPayTab]     = useState('cash');
 
-  // Auto-assigned mode IDs (not exposed as user-selectable dropdowns for Cash/POS)
-  const [cashModeId, setCashModeId]   = useState('');
-  const [posModeId, setPosModeId]     = useState('');
-
-  // Cash tab
-  const [cashAmt, setCashAmt]         = useState('');
-
-  // POS tab — PTRN returned by /billing/pos/push
-  const [ptrn, setPtrn]               = useState(null);
-
-  // Split tab
+  const [cashModeId, setCashModeId] = useState('');
+  const [posModeId, setPosModeId]   = useState('');
+  const [cashAmt, setCashAmt]       = useState('');
+  const [ptrn, setPtrn]             = useState(null);
   const [splitCashAmt, setSplitCashAmt]     = useState('');
   const [splitPosModeId, setSplitPosModeId] = useState('');
 
-  const [busy, setBusy]           = useState(false);
-  const [err, setErr]             = useState('');
+  const [busy, setBusy]         = useState(false);
+  const [err, setErr]           = useState('');
   const [successData, setSuccessData] = useState(null);
-  const [retryKey, setRetryKey]   = useState(0);
+  const [retryKey, setRetryKey] = useState(0);
 
-  // Single ref for the active polling interval — cleared on success, error, unmount
   const pollIntervalRef = useRef(null);
 
-  // ── Load invoice + payment modes on open ──────────────────────────────────
+  // ── Load services and check for existing invoice on open ──────────────────
   useEffect(() => {
     if (!open || !visit) return;
 
-    setStage(STAGE.STAGING);
+    setStage(STAGE.LOADING);
     setInvoice(null);
+    setServices([]);
+    setSelected(new Set());
     setModes([]);
     setPayTab('cash');
     setBusy(false);
@@ -337,17 +398,14 @@ export function CheckoutModal({ open, onClose, visit }) {
     clearInterval(pollIntervalRef.current);
 
     Promise.all([
-      stageInvoice(visit.id),
+      listServices({ isActive: 'true' }),
       api.get('/payment-modes', { params: { limit: 100, isActive: 'true' } }),
     ])
-      .then(([inv, { data: pmData }]) => {
+      .then(([{ data: svcData }, { data: pmData }]) => {
+        const svcList  = svcData.data.services ?? [];
         const modeList = pmData.data.items ?? [];
-        setInvoice(inv);
+        setServices(svcList);
         setModes(modeList);
-
-        const remaining = calcRemaining(inv);
-        setCashAmt(remaining.toFixed(2));
-        setSplitCashAmt('');
 
         if (modeList.length > 0) {
           const { cashMode, posMode } = pickModes(modeList);
@@ -356,15 +414,7 @@ export function CheckoutModal({ open, onClose, visit }) {
           setSplitPosModeId(posMode.id);
         }
 
-        if (inv.paymentStatus === 'PAID') {
-          setSuccessData({
-            invoiceNumber: inv.invoiceNumber,
-            note: 'This invoice is already fully paid.',
-          });
-          setStage(STAGE.SUCCESS);
-        } else {
-          setStage(STAGE.READY);
-        }
+        setStage(STAGE.SELECT);
       })
       .catch((e) => {
         setErr(extractError(e));
@@ -373,8 +423,56 @@ export function CheckoutModal({ open, onClose, visit }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, visit, retryKey]);
 
-  // ── Clear polling interval on unmount ─────────────────────────────────────
   useEffect(() => () => { clearInterval(pollIntervalRef.current); }, []);
+
+  // ── Toggle service selection ──────────────────────────────────────────────
+  function toggleService(id) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  // ── Create invoice with selected services ─────────────────────────────────
+  async function proceedToPayment() {
+    setBusy(true);
+    setErr('');
+    try {
+      let inv;
+      try {
+        const { data } = await checkoutVisit(visit.id, [...selected]);
+        inv = data.data.invoice;
+      } catch (e) {
+        if (e.response?.status === 409) {
+          const invoiceId = e.response?.data?.error?.details?.invoiceId;
+          if (invoiceId) {
+            const { data } = await getInvoiceById(invoiceId);
+            inv = data.data.invoice;
+          } else throw e;
+        } else throw e;
+      }
+
+      setInvoice(inv);
+      const remaining = calcRemaining(inv);
+      setCashAmt(remaining.toFixed(2));
+      setSplitCashAmt('');
+
+      if (inv.paymentStatus === 'PAID') {
+        setSuccessData({
+          invoiceNumber: inv.invoiceNumber,
+          note: 'This invoice is already fully paid.',
+        });
+        setStage(STAGE.SUCCESS);
+      } else {
+        setStage(STAGE.READY);
+      }
+    } catch (e) {
+      setErr(extractError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   // ── Payment handlers ──────────────────────────────────────────────────────
 
@@ -388,6 +486,10 @@ export function CheckoutModal({ open, onClose, visit }) {
         amountPaid:    Number(cashAmt),
         paymentDate:   todayStr(),
       });
+      // Refresh invoice to get updated payments for print view
+      const { data } = await getInvoiceById(invoice.id);
+      setInvoice(data.data.invoice);
+
       setSuccessData({
         invoiceNumber: invoice.invoiceNumber,
         amountPaid:    Number(cashAmt),
@@ -402,19 +504,15 @@ export function CheckoutModal({ open, onClose, visit }) {
   }
 
   async function sendToPos() {
-    // Guard against accidental double-invocation
     clearInterval(pollIntervalRef.current);
-
     const remaining = calcRemaining(invoice);
     const modeName  = modes.find((m) => m.id === posModeId)?.name ?? 'Online / Card';
 
     setBusy(true);
     setErr('');
 
-    // ── Step 1: Push transaction to Pine Labs terminal ────────────────────
     let ptrnValue;
     try {
-      // pos.routes returns raw Plutus JSON — not wrapped in our standard envelope
       const { data } = await api.post('/billing/pos/push', {
         invoiceId:     invoice.id,
         amount:        remaining,
@@ -431,16 +529,15 @@ export function CheckoutModal({ open, onClose, visit }) {
     }
     setBusy(false);
 
-    // ── Step 2: Poll /billing/pos/status/:ptrn every 1.5 s ───────────────
     pollIntervalRef.current = setInterval(async () => {
       try {
         const { data: statusData } = await api.get(`/billing/pos/status/${ptrnValue}`);
-
         if (statusData.ResponseCode === 0) {
-          // Terminal approved — payment already recorded server-side by pos.service
           clearInterval(pollIntervalRef.current);
-          const txRef = statusData.TransactionData
-            ?.map((t) => t.Value).join(' · ') ?? String(ptrnValue);
+          // Refresh invoice for print view
+          const { data } = await getInvoiceById(invoice.id);
+          setInvoice(data.data.invoice);
+          const txRef = statusData.TransactionData?.map((t) => t.Value).join(' · ') ?? String(ptrnValue);
           setSuccessData({
             invoiceNumber: invoice.invoiceNumber,
             amountPaid:    remaining,
@@ -449,13 +546,10 @@ export function CheckoutModal({ open, onClose, visit }) {
           });
           setStage(STAGE.SUCCESS);
         } else if (statusData.ResponseCode !== 1001) {
-          // Unexpected code (e.g. 1004 TRANSACTION NOT FOUND) — stop polling
           clearInterval(pollIntervalRef.current);
           setErr(`POS terminal: ${statusData.ResponseMessage}`);
           setStage(STAGE.ERROR);
         }
-        // ResponseCode 1001 = "TXN UPLOADED" — customer hasn't tapped yet; keep polling
-
       } catch (pollErr) {
         clearInterval(pollIntervalRef.current);
         setErr(extractError(pollErr));
@@ -470,16 +564,20 @@ export function CheckoutModal({ open, onClose, visit }) {
     try {
       await api.post('/payments', {
         invoiceId:     invoice.id,
-        paymentModeId: cashModeId,      // always the auto-assigned CASH mode
+        paymentModeId: cashModeId,
         amountPaid:    cashNum,
         paymentDate:   todayStr(),
       });
       await api.post('/payments', {
         invoiceId:     invoice.id,
-        paymentModeId: splitPosModeId,  // user-selected online / card mode
+        paymentModeId: splitPosModeId,
         amountPaid:    onlineNum,
         paymentDate:   todayStr(),
       });
+      // Refresh invoice for print view
+      const { data } = await getInvoiceById(invoice.id);
+      setInvoice(data.data.invoice);
+
       setSuccessData({
         invoiceNumber: invoice.invoiceNumber,
         amountPaid:    calcRemaining(invoice),
@@ -493,20 +591,25 @@ export function CheckoutModal({ open, onClose, visit }) {
     }
   }
 
+  // ── Print handler ─────────────────────────────────────────────────────────
+
+  function handlePrint() {
+    window.print();
+  }
+
   // ── Modal close guard ─────────────────────────────────────────────────────
 
   function handleClose() {
-    if (stage === STAGE.POS_WAITING) return; // Terminal handshake in progress
+    if (stage === STAGE.POS_WAITING) return;
     clearInterval(pollIntervalRef.current);
     onClose(stage === STAGE.SUCCESS);
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Derived state ─────────────────────────────────────────────────────────
 
   const remaining    = calcRemaining(invoice);
   const cashModeName = modes.find((m) => m.id === cashModeId)?.name ?? 'Cash';
   const posModeName  = modes.find((m) => m.id === posModeId)?.name  ?? 'Online / Card';
-  // Modes available for the Split online portion — excludes the cash mode.
   const nonCashModes = modes.filter((m) => m.id !== cashModeId);
 
   const PAY_TABS = [
@@ -515,166 +618,213 @@ export function CheckoutModal({ open, onClose, visit }) {
     { id: 'split', label: 'Split',        Icon: SplitIcon },
   ];
 
+  const modalTitle =
+    stage === STAGE.SUCCESS     ? 'Receipt' :
+    stage === STAGE.POS_WAITING ? 'POS Terminal' :
+    stage === STAGE.SELECT      ? 'Select Tests & Generate Bill' :
+    'Collect Payment';
+
   return (
-    <Modal
-      open={open}
-      onClose={handleClose}
-      title={
-        stage === STAGE.SUCCESS     ? 'Receipt' :
-        stage === STAGE.POS_WAITING ? 'POS Terminal' :
-        'Collect Payment'
-      }
-      size="md"
-    >
-      {/* STAGING */}
-      {stage === STAGE.STAGING && (
-        <div className="flex flex-col items-center gap-3 py-10">
-          <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-slate-200 border-t-blue-600" />
-          <p className="text-sm text-slate-500">Staging invoice…</p>
-        </div>
-      )}
-
-      {/* POS WAITING — polling interval active */}
-      {stage === STAGE.POS_WAITING && (
-        <PosWaitingScreen
-          ptrn={ptrn}
-          remaining={remaining}
-          modeName={posModeName}
-        />
-      )}
-
-      {/* SUCCESS */}
-      {stage === STAGE.SUCCESS && successData && (
-        <SuccessScreen data={successData} onClose={handleClose} />
-      )}
-
-      {/* ERROR */}
-      {stage === STAGE.ERROR && (
-        <div className="flex flex-col items-center gap-4 py-8 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-100">
-            <WarnLargeIcon />
+    <>
+      <Modal open={open} onClose={handleClose} title={modalTitle} size="md">
+        {/* LOADING */}
+        {stage === STAGE.LOADING && (
+          <div className="flex flex-col items-center gap-3 py-10">
+            <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-slate-200 border-t-blue-600" />
+            <p className="text-sm text-slate-500">Loading…</p>
           </div>
-          <div>
-            <p className="font-semibold text-slate-900">Something went wrong</p>
-            <p className="mt-1 text-sm text-red-600">{err}</p>
-          </div>
-          <Button onClick={() => setRetryKey((k) => k + 1)}>Try Again</Button>
-        </div>
-      )}
+        )}
 
-      {/* READY */}
-      {stage === STAGE.READY && invoice && (
-        <div className="space-y-4">
-          {/* Invoice summary card */}
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="font-mono text-xs font-semibold text-blue-700">{invoice.invoiceNumber}</p>
-                <p className="mt-0.5 text-base font-bold text-slate-900">
-                  {visit?.patient?.firstName} {visit?.patient?.lastName ?? ''}
-                </p>
-                <p className="text-[11px] text-slate-500 font-mono">
-                  {visit?.patient?.uhid} · {visit?.opNumber}
-                </p>
-              </div>
-              <div className="text-right shrink-0">
-                <p className="text-xs text-slate-500">Net Amount</p>
-                <p className="text-2xl font-bold text-slate-900">{fmtCurrency(invoice.netAmount)}</p>
-                {remaining < Number(invoice.netAmount) && (
-                  <p className="mt-0.5 text-xs font-semibold text-amber-600">
-                    Remaining: {fmtCurrency(remaining)}
+        {/* SELECT TESTS */}
+        {stage === STAGE.SELECT && (
+          <>
+            {err && (
+              <p className="mb-3 rounded-lg bg-red-50 border border-red-200 px-3 py-2.5 text-sm font-medium text-red-700">
+                ⚠ {err}
+              </p>
+            )}
+            <SelectServicesStage
+              visit={visit}
+              services={services}
+              selected={selected}
+              onToggle={toggleService}
+              onProceed={proceedToPayment}
+              busy={busy}
+            />
+          </>
+        )}
+
+        {/* STAGING (creating invoice) */}
+        {stage === STAGE.STAGING && (
+          <div className="flex flex-col items-center gap-3 py-10">
+            <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-slate-200 border-t-blue-600" />
+            <p className="text-sm text-slate-500">Staging invoice…</p>
+          </div>
+        )}
+
+        {/* POS WAITING */}
+        {stage === STAGE.POS_WAITING && (
+          <PosWaitingScreen ptrn={ptrn} remaining={remaining} modeName={posModeName} />
+        )}
+
+        {/* SUCCESS */}
+        {stage === STAGE.SUCCESS && successData && (
+          <SuccessScreen
+            data={successData}
+            onClose={handleClose}
+            onPrint={handlePrint}
+          />
+        )}
+
+        {/* ERROR */}
+        {stage === STAGE.ERROR && (
+          <div className="flex flex-col items-center gap-4 py-8 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-100">
+              <WarnLargeIcon />
+            </div>
+            <div>
+              <p className="font-semibold text-slate-900">Something went wrong</p>
+              <p className="mt-1 text-sm text-red-600">{err}</p>
+            </div>
+            <Button onClick={() => setRetryKey((k) => k + 1)}>Try Again</Button>
+          </div>
+        )}
+
+        {/* READY — payment tabs */}
+        {stage === STAGE.READY && invoice && (
+          <div className="space-y-4">
+            {/* Invoice summary */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="font-mono text-xs font-semibold text-blue-700">{invoice.invoiceNumber}</p>
+                  <p className="mt-0.5 text-base font-bold text-slate-900">
+                    {visit?.patient?.firstName} {visit?.patient?.lastName ?? ''}
                   </p>
+                  <p className="text-[11px] text-slate-500 font-mono">
+                    {visit?.patient?.uhid} · {visit?.opNumber}
+                  </p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-xs text-slate-500">Net Amount</p>
+                  <p className="text-2xl font-bold text-slate-900">{fmtCurrency(invoice.netAmount)}</p>
+                  {remaining < Number(invoice.netAmount) && (
+                    <p className="mt-0.5 text-xs font-semibold text-amber-600">
+                      Remaining: {fmtCurrency(remaining)}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="mt-3 space-y-1 border-t border-slate-200 pt-3">
+                {invoice.items.map((item) => (
+                  <div key={item.id} className="flex justify-between text-sm">
+                    <span className="text-slate-600">{item.description}</span>
+                    <span className="font-semibold text-slate-800">{fmtCurrency(item.amount)}</span>
+                  </div>
+                ))}
+                {Number(invoice.discountAmount) > 0 && (
+                  <div className="flex justify-between text-sm text-emerald-700">
+                    <span>Discount</span>
+                    <span className="font-semibold">−{fmtCurrency(invoice.discountAmount)}</span>
+                  </div>
+                )}
+                {invoice.payments.length > 0 && (
+                  <div className="mt-2 border-t border-dashed border-slate-200 pt-2 space-y-1">
+                    {invoice.payments.map((p) => (
+                      <div key={p.id} className="flex justify-between text-xs text-emerald-700">
+                        <span>Paid via {p.paymentMode?.name}</span>
+                        <span className="font-semibold">{fmtCurrency(p.amountPaid)}</span>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>
 
-            <div className="mt-3 space-y-1 border-t border-slate-200 pt-3">
-              {invoice.items.map((item) => (
-                <div key={item.id} className="flex justify-between text-sm">
-                  <span className="text-slate-600">{item.description}</span>
-                  <span className="font-semibold text-slate-800">{fmtCurrency(item.amount)}</span>
-                </div>
-              ))}
-              {Number(invoice.discountAmount) > 0 && (
-                <div className="flex justify-between text-sm text-emerald-700">
-                  <span>Discount</span>
-                  <span className="font-semibold">−{fmtCurrency(invoice.discountAmount)}</span>
-                </div>
-              )}
-              {invoice.payments.length > 0 && (
-                <div className="mt-2 border-t border-dashed border-slate-200 pt-2 space-y-1">
-                  {invoice.payments.map((p) => (
-                    <div key={p.id} className="flex justify-between text-xs text-emerald-700">
-                      <span>Paid via {p.paymentMode?.name}</span>
-                      <span className="font-semibold">{fmtCurrency(p.amountPaid)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
+            {err && (
+              <p className="rounded-lg bg-red-50 border border-red-200 px-3 py-2.5 text-sm font-medium text-red-700">
+                ⚠ {err}
+              </p>
+            )}
+
+            {/* Payment type tabs */}
+            <div className="flex overflow-hidden rounded-xl border border-slate-200">
+              {PAY_TABS.map((tab, i) => {
+                const Icon = tab.Icon;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => { setPayTab(tab.id); setErr(''); }}
+                    className={`flex flex-1 items-center justify-center gap-1.5 py-2.5 text-sm font-medium transition-colors
+                      ${i > 0 ? 'border-l border-slate-200' : ''}
+                      ${payTab === tab.id
+                        ? 'bg-slate-900 text-white'
+                        : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    <Icon /> {tab.label}
+                  </button>
+                );
+              })}
             </div>
+
+            {payTab === 'cash' && (
+              <CashTab
+                modeName={cashModeName}
+                cashAmt={cashAmt} setCashAmt={setCashAmt}
+                remaining={remaining}
+                busy={busy} onPay={payCash}
+              />
+            )}
+            {payTab === 'pos' && (
+              <PosTab
+                modeName={posModeName}
+                remaining={remaining}
+                busy={busy} onSend={sendToPos}
+              />
+            )}
+            {payTab === 'split' && (
+              <SplitTab
+                cashModeName={cashModeName}
+                nonCashModes={nonCashModes}
+                splitCashAmt={splitCashAmt} setSplitCashAmt={setSplitCashAmt}
+                splitPosModeId={splitPosModeId} setSplitPosModeId={setSplitPosModeId}
+                remaining={remaining}
+                busy={busy} onPay={paySplit}
+              />
+            )}
           </div>
+        )}
+      </Modal>
 
-          {/* Inline error */}
-          {err && (
-            <p className="rounded-lg bg-red-50 border border-red-200 px-3 py-2.5 text-sm font-medium text-red-700">
-              ⚠ {err}
-            </p>
-          )}
-
-          {/* Payment type tabs */}
-          <div className="flex overflow-hidden rounded-xl border border-slate-200">
-            {PAY_TABS.map((tab, i) => {
-              const Icon = tab.Icon;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => { setPayTab(tab.id); setErr(''); }}
-                  className={`flex flex-1 items-center justify-center gap-1.5 py-2.5 text-sm font-medium transition-colors
-                    ${i > 0 ? 'border-l border-slate-200' : ''}
-                    ${payTab === tab.id
-                      ? 'bg-slate-900 text-white'
-                      : 'bg-white text-slate-600 hover:bg-slate-50'}`}
-                >
-                  <Icon /> {tab.label}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Tab content */}
-          {payTab === 'cash' && (
-            <CashTab
-              modeName={cashModeName}
-              cashAmt={cashAmt} setCashAmt={setCashAmt}
-              remaining={remaining}
-              busy={busy} onPay={payCash}
-            />
-          )}
-          {payTab === 'pos' && (
-            <PosTab
-              modeName={posModeName}
-              remaining={remaining}
-              busy={busy} onSend={sendToPos}
-            />
-          )}
-          {payTab === 'split' && (
-            <SplitTab
-              cashModeName={cashModeName}
-              nonCashModes={nonCashModes}
-              splitCashAmt={splitCashAmt} setSplitCashAmt={setSplitCashAmt}
-              splitPosModeId={splitPosModeId} setSplitPosModeId={setSplitPosModeId}
-              remaining={remaining}
-              busy={busy} onPay={paySplit}
-            />
-          )}
-        </div>
+      {/* A5 print view — rendered as a portal into document.body, hidden on screen */}
+      {stage === STAGE.SUCCESS && invoice && (
+        <InvoicePrintView invoice={invoice} visit={visit} />
       )}
-    </Modal>
+    </>
   );
 }
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
+
+function ArrowRightIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M3 8h10M9 4l4 4-4 4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function PrintIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M4 5V2.5h8V5" />
+      <rect x="1.5" y="5" width="13" height="7" rx="1.5" />
+      <path d="M4 12.5h8v1H4z" fill="currentColor" stroke="none" />
+      <circle cx="3.5" cy="8" r="0.75" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
 
 function CashIcon() {
   return (

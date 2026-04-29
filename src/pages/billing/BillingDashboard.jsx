@@ -2,16 +2,17 @@ import { useCallback, useEffect, useState } from 'react';
 import { AppShell } from '../../components/AppShell';
 import { extractError } from '../../lib/api';
 import { listVisits } from '../../api/visits.api';
-import { listInvoices } from '../../api/billing.api';
-import { CheckoutModal } from './CheckoutModal';
+import { ConsultationModal } from './ConsultationModal';
+import { TestsBillingModal } from './TestsBillingModal';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
 const INV_STATUS = {
-  PENDING:   { label: 'Pending',   cls: 'bg-amber-50 text-amber-700 ring-amber-200' },
-  PARTIAL:   { label: 'Partial',   cls: 'bg-blue-50 text-blue-700 ring-blue-200' },
-  PAID:      { label: 'Paid',      cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
-  CANCELLED: { label: 'Void',      cls: 'bg-slate-100 text-slate-500 ring-slate-200' },
+  PENDING:          { label: 'Pending',       cls: 'bg-amber-50 text-amber-700 ring-amber-200' },
+  PARTIAL:          { label: 'Partial',       cls: 'bg-blue-50 text-blue-700 ring-blue-200' },
+  PAID:             { label: 'Paid',          cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
+  CANCELLED:        { label: 'Void',          cls: 'bg-slate-100 text-slate-500 ring-slate-200' },
+  SERVICES_PENDING: { label: 'Tests Pending', cls: 'bg-teal-50 text-teal-700 ring-teal-200' },
 };
 
 const UNBILLED = { label: 'Unbilled', cls: 'bg-rose-50 text-rose-600 ring-rose-200' };
@@ -67,11 +68,23 @@ function InvBadge({ status }) {
 
 // ─── Table row ────────────────────────────────────────────────────────────────
 
-function VisitRow({ visit, invoice, onCheckout }) {
-  const isPaid      = invoice?.paymentStatus === 'PAID';
-  const isPartial   = invoice?.paymentStatus === 'PARTIAL';
-  const isPending   = invoice?.paymentStatus === 'PENDING';
-  const needsAction = !isPaid && visit.queueStatus !== 'TRANSFERRED';
+function VisitRow({ visit, invoiceData, onPayConsultation, onAddTests }) {
+  const consultation    = invoiceData?.consultation ?? null;
+  const servicesInvs    = invoiceData?.services ?? [];
+  const consultPaid     = consultation?.paymentStatus === 'PAID';
+  const servicesPending = servicesInvs.some((s) => s.paymentStatus !== 'PAID');
+
+  const totalAmount = invoiceData
+    ? Number(consultation?.netAmount ?? 0) + servicesInvs.reduce((s, i) => s + Number(i.netAmount), 0)
+    : null;
+
+  const overallStatus = !consultation
+    ? null
+    : consultation.paymentStatus !== 'PAID'
+      ? consultation.paymentStatus
+      : servicesPending
+        ? 'SERVICES_PENDING'
+        : 'PAID';
 
   return (
     <tr className="group hover:bg-slate-50 transition-colors">
@@ -93,29 +106,35 @@ function VisitRow({ visit, invoice, onCheckout }) {
         {visit.doctor?.name ?? '—'}
       </td>
       <td className="whitespace-nowrap px-4 py-3 text-sm font-semibold text-slate-800">
-        {invoice ? fmtCurrency(invoice.netAmount) : '—'}
+        {totalAmount !== null ? fmtCurrency(totalAmount) : '—'}
       </td>
       <td className="whitespace-nowrap px-4 py-3">
-        <InvBadge status={invoice?.paymentStatus} />
+        <InvBadge status={overallStatus} />
       </td>
       <td className="whitespace-nowrap px-4 py-3 text-right">
-        {isPaid ? (
-          <span className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold text-emerald-700">
-            <CheckIcon /> Collected
-          </span>
-        ) : visit.queueStatus === 'TRANSFERRED' ? (
-          <span className="text-xs text-slate-400">Transferred</span>
+        {!consultation ? (
+          <button
+            type="button"
+            onClick={() => onPayConsultation(visit)}
+            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition shadow-sm bg-blue-600 text-white hover:bg-blue-700"
+          >
+            <CashRegisterIcon /> Pay Consultation
+          </button>
+        ) : !consultPaid ? (
+          <button
+            type="button"
+            onClick={() => onPayConsultation(visit)}
+            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition shadow-sm bg-amber-500 text-white hover:bg-amber-600"
+          >
+            <CashRegisterIcon /> Complete Payment
+          </button>
         ) : (
           <button
             type="button"
-            onClick={() => onCheckout(visit)}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition shadow-sm
-              ${isPending || isPartial
-                ? 'bg-amber-500 text-white hover:bg-amber-600'
-                : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+            onClick={() => onAddTests(visit)}
+            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition shadow-sm bg-teal-600 text-white hover:bg-teal-700"
           >
-            <CashRegisterIcon />
-            {isPending || isPartial ? 'Complete Payment' : 'Collect Payment'}
+            <TestTubeIcon /> Add Tests
           </button>
         )}
       </td>
@@ -131,23 +150,24 @@ export default function BillingDashboard() {
   const [invoiceMap, setInvoiceMap] = useState({});
   const [loading, setLoading]     = useState(true);
   const [err, setErr]             = useState('');
-  const [checkoutVisit, setCheckoutVisit] = useState(null);
+  const [consultationVisit, setConsultationVisit] = useState(null);
+  const [testsVisit, setTestsVisit] = useState(null);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     setErr('');
     try {
-      const [{ data: vData }, { data: iData }] = await Promise.all([
-        listVisits({ date, limit: 100 }),
-        listInvoices({ dateFrom: date, dateTo: date, limit: 100 }),
-      ]);
-
+      const { data: vData } = await listVisits({ date, limit: 100 });
       const allVisits = vData.data.visits;
-      setVisits(allVisits.filter((v) => ['DONE', 'TRANSFERRED'].includes(v.queueStatus)));
+      const filtered  = allVisits.filter((v) => ['DONE', 'TRANSFERRED'].includes(v.queueStatus));
+      setVisits(filtered);
 
       const map = {};
-      for (const inv of iData.data.invoices) {
-        if (inv.visit?.id) map[inv.visit.id] = inv;
+      for (const v of filtered) {
+        map[v.id] = {
+          consultation: v.invoices?.find((i) => i.invoiceType === 'CONSULTATION') ?? null,
+          services:     v.invoices?.filter((i) => i.invoiceType === 'SERVICES') ?? [],
+        };
       }
       setInvoiceMap(map);
     } catch (e) {
@@ -161,12 +181,22 @@ export default function BillingDashboard() {
 
   // ── Stats ─────────────────────────────────────────────────────────────────
 
-  const unbilled  = visits.filter((v) => !invoiceMap[v.id]).length;
-  const pending   = visits.filter((v) => ['PENDING', 'PARTIAL'].includes(invoiceMap[v.id]?.paymentStatus)).length;
-  const paid      = visits.filter((v) => invoiceMap[v.id]?.paymentStatus === 'PAID').length;
+  const unbilled  = visits.filter((v) => !invoiceMap[v.id]?.consultation).length;
+  const pending   = visits.filter((v) => {
+    const m = invoiceMap[v.id];
+    if (!m?.consultation) return false;
+    return m.consultation.paymentStatus !== 'PAID' ||
+           m.services.some((s) => s.paymentStatus !== 'PAID');
+  }).length;
+  const paid      = visits.filter((v) => invoiceMap[v.id]?.consultation?.paymentStatus === 'PAID').length;
   const collected = visits.reduce((sum, v) => {
-    const inv = invoiceMap[v.id];
-    return inv?.paymentStatus === 'PAID' ? sum + Number(inv.netAmount) : sum;
+    const m = invoiceMap[v.id];
+    if (!m) return sum;
+    let total = m.consultation?.paymentStatus === 'PAID' ? Number(m.consultation.netAmount) : 0;
+    for (const si of m.services) {
+      if (si.paymentStatus === 'PAID') total += Number(si.netAmount);
+    }
+    return sum + total;
   }, 0);
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -259,8 +289,9 @@ export default function BillingDashboard() {
                       <VisitRow
                         key={v.id}
                         visit={v}
-                        invoice={invoiceMap[v.id]}
-                        onCheckout={setCheckoutVisit}
+                        invoiceData={invoiceMap[v.id]}
+                        onPayConsultation={setConsultationVisit}
+                        onAddTests={setTestsVisit}
                       />
                     ))}
                   </tbody>
@@ -271,12 +302,22 @@ export default function BillingDashboard() {
         </main>
       </div>
 
-      {/* ── Checkout modal ── */}
-      <CheckoutModal
-        open={!!checkoutVisit}
-        visit={checkoutVisit}
+      {/* ── Phase 1: Consultation billing modal ── */}
+      <ConsultationModal
+        open={!!consultationVisit}
+        visit={consultationVisit}
         onClose={(refreshed) => {
-          setCheckoutVisit(null);
+          setConsultationVisit(null);
+          if (refreshed) load(true);
+        }}
+      />
+
+      {/* ── Phase 2: Tests billing modal ── */}
+      <TestsBillingModal
+        open={!!testsVisit}
+        visit={testsVisit}
+        onClose={(refreshed) => {
+          setTestsVisit(null);
           if (refreshed) load(true);
         }}
       />
@@ -325,6 +366,14 @@ function EmptyBillingIcon() {
     <svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.5">
       <rect x="6" y="4" width="20" height="24" rx="2" />
       <path d="M11 11h10M11 16h7M11 21h5" />
+    </svg>
+  );
+}
+
+function TestTubeIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M5 2h6M6 2v7l-2.5 4.5a1 1 0 0 0 .9 1.5h7.2a1 1 0 0 0 .9-1.5L10 9V2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

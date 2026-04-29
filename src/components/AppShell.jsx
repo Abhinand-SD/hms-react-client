@@ -1,21 +1,27 @@
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { Button } from './Button';
-import hospitalLogo from '../assets/hospital_logo.png';
+import hospitalLogo from '../assets/KHC-logo.svg';
 
 const NAV = [
-  { to: '/dashboard', label: 'Dashboard', icon: HomeIcon, roles: null },
+  { to: '/dashboard', label: 'Dashboard', icon: HomeIcon, roles: null, hideForRoles: ['DOCTOR'] },
   { to: '/users', label: 'Users', icon: UsersIcon, roles: ['ADMIN'] },
   { to: '/patients',      label: 'Patients',     icon: PatientIcon,     roles: null },
   { to: '/appointments',  label: 'Appointments', icon: CalendarIcon,    roles: null },
   { to: '/queue',         label: 'Live Queue',   icon: QueueIcon,       roles: null },
   { to: '/billing',       label: 'Billing',      icon: BillingIcon,     roles: ['ADMIN', 'RECEPTIONIST'] },
-  { label: 'Masters', divider: true },
-  { to: '/masters/doctors', label: 'Doctors', icon: DoctorIcon, roles: null },
-  { to: '/masters/rates', label: 'Rates', icon: RatesIcon, roles: null },
-  { to: '/masters/wards', label: 'Wards', icon: WardIcon, roles: null },
-  { to: '/masters/payment-modes', label: 'Payment Modes', icon: PayIcon, roles: null },
+  { label: 'Masters', divider: true, hideForRoles: ['DOCTOR'] },
+  { to: '/masters/services',      label: 'Services',      icon: ServicesIcon, roles: ['ADMIN'] },
+  { to: '/masters/doctors',       label: 'Doctors',       icon: DoctorIcon,   roles: null, hideForRoles: ['DOCTOR'] },
+  { to: '/masters/rates',         label: 'Rates',         icon: RatesIcon,    roles: null, hideForRoles: ['DOCTOR'] },
+  { to: '/masters/wards',         label: 'Wards',         icon: WardIcon,     roles: null, hideForRoles: ['DOCTOR'] },
+  { to: '/masters/payment-modes', label: 'Payment Modes', icon: PayIcon,      roles: null, hideForRoles: ['DOCTOR'] },
 ];
+
+function formatRole(role) {
+  if (!role) return '';
+  return role.charAt(0).toUpperCase() + role.slice(1).toLowerCase();
+}
 
 export function AppShell({ children }) {
   const { user, logout } = useAuth();
@@ -25,14 +31,26 @@ export function AppShell({ children }) {
     window.location.href = '/login';
   }
 
-  const visibleNav = NAV.filter((item) => !item.roles || item.roles.includes(user?.role));
+  const visibleNav = NAV.filter((item) => {
+    if (item.hideForRoles && item.hideForRoles.includes(user?.role)) return false;
+    if (item.roles && !item.roles.includes(user?.role)) return false;
+    return true;
+  });
 
   return (
     <div className="flex min-h-screen bg-slate-50">
       <aside className="flex w-52 shrink-0 flex-col border-r border-slate-200 bg-white">
-        <div className="flex items-center gap-2.5 border-b border-slate-100 px-4 py-3.5">
-          <img src={hospitalLogo} alt="HMS" className="h-7 w-7 rounded-lg object-cover" />
-          <span className="text-sm font-semibold text-slate-900">HMS</span>
+        <div className="flex flex-row items-center justify-between gap-2 border-b border-slate-100 px-4 py-3.5">
+          <img
+            src={hospitalLogo}
+            alt="Karunya Hrudayalaya Cardiac Center"
+            className="h-9 w-auto max-w-[140px] object-contain"
+          />
+          {user?.role && (
+            <span className="text-sm text-gray-500">
+              {formatRole(user.role)}
+            </span>
+          )}
         </div>
 
         <nav className="flex-1 overflow-y-auto px-2 py-3">
@@ -182,6 +200,15 @@ function BillingIcon() {
       <rect x="2" y="1.5" width="9" height="13" rx="1.5" />
       <path d="M5 5h3M5 8h3M5 11h2" />
       <path d="M11 8h3M12.5 6.5v3" />
+    </svg>
+  );
+}
+
+function ServicesIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2z" />
+      <path d="M8 5v3l2 2" strokeLinecap="round" />
     </svg>
   );
 }
