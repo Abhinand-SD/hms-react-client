@@ -56,5 +56,7 @@ export function useAuth() {
 
 export function homeFor(user) {
   if (!user) return '/login';
-  return user.role === 'ADMIN' ? '/users' : '/dashboard';
+  // All authenticated roles land on the dashboard; the dashboard component
+  // itself picks the role-specific view (Admin/Receptionist/Doctor).
+  return '/dashboard';
 }

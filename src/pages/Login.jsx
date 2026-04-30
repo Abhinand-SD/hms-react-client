@@ -20,17 +20,8 @@ export default function Login() {
     setBusy(true);
     try {
       const user = await login(username, pin);
-      console.log('Login returned:', user);
-      const role = user?.role;
       const from = loc.state?.from;
-      let dest;
-      if(role === 'ADMIN'){
-        dest = from && from !== '/login' ? from : '/users';
-      }
-      else{
-        dest = '/dashboard';
-      }
-      
+      const dest = from && from !== '/login' ? from : '/dashboard';
       window.location.href = dest;
     } catch (e) {
       setErr(extractError(e));

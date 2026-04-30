@@ -1,9 +1,10 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './lib/auth';
+import { ShiftProvider } from './lib/shift';
 import { RequireAuth, RequireRole, RedirectHome } from './components/RouteGuards';
 import Login from './pages/Login';
 import UsersAdmin from './pages/UsersAdmin';
-import Dashboard from './pages/Dashboard';
+import DashboardRouter from './pages/dashboards/DashboardRouter';
 import Doctors from './pages/masters/Doctors';
 import Rates from './pages/masters/Rates';
 import Wards from './pages/masters/Wards';
@@ -15,15 +16,17 @@ import PatientDetail from './pages/patients/PatientDetail';
 import AppointmentsDashboard from './pages/appointments/AppointmentsDashboard';
 import LiveQueue from './pages/queue/LiveQueue';
 import BillingDashboard from './pages/billing/BillingDashboard';
+import FinancialReports from './pages/reports/FinancialReports';
 
 export default function App() {
   return (
     <AuthProvider>
+      <ShiftProvider>
       <BrowserRouter>
         <Routes>
           <Route path="/login"     element={<Login />} />
           <Route path="/users"     element={<RequireRole roles={['ADMIN']}><UsersAdmin /></RequireRole>} />
-          <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
+          <Route path="/dashboard" element={<RequireAuth><DashboardRouter /></RequireAuth>} />
 
           {/* Patients */}
           <Route path="/patients"          element={<RequireAuth><PatientsList /></RequireAuth>} />
@@ -40,6 +43,9 @@ export default function App() {
           {/* Billing & Checkout */}
           <Route path="/billing" element={<RequireRole roles={['ADMIN', 'RECEPTIONIST']}><BillingDashboard /></RequireRole>} />
 
+          {/* Reports (Admin) */}
+          <Route path="/reports" element={<RequireRole roles={['ADMIN']}><FinancialReports /></RequireRole>} />
+
           {/* Masters */}
           <Route path="/masters/doctors"       element={<RequireAuth><Doctors /></RequireAuth>} />
           <Route path="/masters/rates"         element={<RequireAuth><Rates /></RequireAuth>} />
@@ -51,6 +57,7 @@ export default function App() {
           <Route path="*" element={<RedirectHome />} />
         </Routes>
       </BrowserRouter>
+      </ShiftProvider>
     </AuthProvider>
   );
 }

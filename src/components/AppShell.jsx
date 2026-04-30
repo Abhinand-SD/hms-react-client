@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { Button } from './Button';
+import { ShiftStatusWidget } from './shifts/ShiftStatusWidget';
 import hospitalLogo from '../assets/KHC-logo.svg';
 
 const NAV = [
@@ -10,6 +11,7 @@ const NAV = [
   { to: '/appointments',  label: 'Appointments', icon: CalendarIcon,    roles: null },
   { to: '/queue',         label: 'Live Queue',   icon: QueueIcon,       roles: null },
   { to: '/billing',       label: 'Billing',      icon: BillingIcon,     roles: ['ADMIN', 'RECEPTIONIST'] },
+  { to: '/reports',       label: 'Reports',      icon: ReportsIcon,     roles: ['ADMIN'] },
   { label: 'Masters', divider: true, hideForRoles: ['DOCTOR'] },
   { to: '/masters/services',      label: 'Services',      icon: ServicesIcon, roles: ['ADMIN'] },
   { to: '/masters/doctors',       label: 'Doctors',       icon: DoctorIcon,   roles: null, hideForRoles: ['DOCTOR'] },
@@ -81,6 +83,8 @@ export function AppShell({ children }) {
             );
           })}
         </nav>
+
+        <ShiftStatusWidget />
 
         <div className="border-t border-slate-100 px-3 py-3">
           <div className="mb-2 px-1">
@@ -200,6 +204,15 @@ function BillingIcon() {
       <rect x="2" y="1.5" width="9" height="13" rx="1.5" />
       <path d="M5 5h3M5 8h3M5 11h2" />
       <path d="M11 8h3M12.5 6.5v3" />
+    </svg>
+  );
+}
+
+function ReportsIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <rect x="2" y="2" width="12" height="12" rx="1.5" />
+      <path d="M5 11V7M8 11V5M11 11V9" strokeLinecap="round" />
     </svg>
   );
 }

@@ -4,6 +4,8 @@ import { extractError } from '../../lib/api';
 import { listVisits } from '../../api/visits.api';
 import { ConsultationModal } from './ConsultationModal';
 import { TestsBillingModal } from './TestsBillingModal';
+import { useShift } from '../../lib/shift';
+import { OpenShiftModal } from '../../components/shifts/OpenShiftModal';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -145,6 +147,7 @@ function VisitRow({ visit, invoiceData, onPayConsultation, onAddTests }) {
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function BillingDashboard() {
+  const { isCashHandler, isOpen: shiftIsOpen, loading: shiftLoading } = useShift();
   const [date, setDate]           = useState(todayStr);
   const [visits, setVisits]       = useState([]);
   const [invoiceMap, setInvoiceMap] = useState({});
@@ -152,6 +155,19 @@ export default function BillingDashboard() {
   const [err, setErr]             = useState('');
   const [consultationVisit, setConsultationVisit] = useState(null);
   const [testsVisit, setTestsVisit] = useState(null);
+  const [openShiftModal, setOpenShiftModal] = useState(false);
+
+  const billingLocked = isCashHandler && !shiftIsOpen;
+
+  function guard(setter) {
+    return (visit) => {
+      if (billingLocked) {
+        setOpenShiftModal(true);
+        return;
+      }
+      setter(visit);
+    };
+  }
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -248,6 +264,21 @@ export default function BillingDashboard() {
 
         {/* ── Body ── */}
         <main className="flex flex-1 flex-col overflow-hidden p-5">
+          {billingLocked && !shiftLoading && (
+            <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+              <div className="flex items-center gap-2">
+                <WarnIcon />
+                <span>You must open a shift before recording any payments.</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpenShiftModal(true)}
+                className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
+              >
+                Open Shift
+              </button>
+            </div>
+          )}
           {err && (
             <div className="mb-4 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
               <WarnIcon /> {err}
@@ -290,8 +321,8 @@ export default function BillingDashboard() {
                         key={v.id}
                         visit={v}
                         invoiceData={invoiceMap[v.id]}
-                        onPayConsultation={setConsultationVisit}
-                        onAddTests={setTestsVisit}
+                        onPayConsultation={guard(setConsultationVisit)}
+                        onAddTests={guard(setTestsVisit)}
                       />
                     ))}
                   </tbody>
@@ -320,6 +351,12 @@ export default function BillingDashboard() {
           setTestsVisit(null);
           if (refreshed) load(true);
         }}
+      />
+
+      {/* ── Open-shift gate ── */}
+      <OpenShiftModal
+        open={openShiftModal}
+        onClose={() => setOpenShiftModal(false)}
       />
     </AppShell>
   );
