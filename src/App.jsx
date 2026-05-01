@@ -1,6 +1,5 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './lib/auth';
-import { ShiftProvider } from './lib/shift';
 import { RequireAuth, RequireRole, RedirectHome } from './components/RouteGuards';
 import Login from './pages/Login';
 import UsersAdmin from './pages/UsersAdmin';
@@ -21,7 +20,6 @@ import FinancialReports from './pages/reports/FinancialReports';
 export default function App() {
   return (
     <AuthProvider>
-      <ShiftProvider>
       <BrowserRouter>
         <Routes>
           <Route path="/login"     element={<Login />} />
@@ -57,7 +55,6 @@ export default function App() {
           <Route path="*" element={<RedirectHome />} />
         </Routes>
       </BrowserRouter>
-      </ShiftProvider>
     </AuthProvider>
   );
 }

@@ -3,10 +3,7 @@ import { Link } from 'react-router-dom';
 import { AppShell } from '../../components/AppShell';
 import { extractError } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
-import { useShift } from '../../lib/shift';
 import { getReceptionistDashboard } from '../../api/dashboard.api';
-import { OpenShiftModal } from '../../components/shifts/OpenShiftModal';
-import { CloseShiftModal } from '../../components/shifts/CloseShiftModal';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -37,14 +34,9 @@ const STATUS_PILL = {
 
 export default function ReceptionistDashboard() {
   const { user } = useAuth();
-  // Pull live shift state from the shared provider so the modals here mutate
-  // the same source of truth the sidebar widget uses.
-  const { refresh: refreshShift } = useShift();
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr]         = useState('');
-  const [openModal, setOpenModal]   = useState(false);
-  const [closeModal, setCloseModal] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -61,7 +53,6 @@ export default function ReceptionistDashboard() {
 
   useEffect(() => { load(); }, [load]);
 
-  const shift = data?.shift;
   const recent = data?.recentBilledVisits ?? [];
 
   return (
@@ -98,14 +89,6 @@ export default function ReceptionistDashboard() {
               {err}
             </div>
           )}
-
-          {/* Top: Shift status widget */}
-          <ShiftStatusCard
-            shift={shift}
-            patientsToday={data?.patientsRegisteredToday}
-            onOpen={() => setOpenModal(true)}
-            onClose={() => setCloseModal(true)}
-          />
 
           {/* Middle: Quick actions */}
           <section>
@@ -179,100 +162,7 @@ export default function ReceptionistDashboard() {
         </main>
       </div>
 
-      {/* Modals — refresh both the shift provider and the dashboard payload after mutation. */}
-      <OpenShiftModal
-        open={openModal}
-        onClose={() => setOpenModal(false)}
-        onOpened={() => { refreshShift(); load(); }}
-      />
-      <CloseShiftModal
-        open={closeModal}
-        onClose={() => setCloseModal(false)}
-        onClosed={() => { refreshShift(); load(); }}
-      />
     </AppShell>
-  );
-}
-
-// ─── Shift status card ────────────────────────────────────────────────────────
-
-function ShiftStatusCard({ shift, patientsToday, onOpen, onClose }) {
-  const isOpen = !!shift?.isOpen;
-
-  return (
-    <section
-      className={`grid gap-4 rounded-2xl border p-5 shadow-sm md:grid-cols-[1fr_auto] ${
-        isOpen ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200 bg-white'
-      }`}
-    >
-      <div>
-        <div className="mb-2 flex items-center gap-2">
-          <span
-            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-              isOpen
-                ? 'bg-emerald-600 text-white'
-                : 'bg-slate-200 text-slate-600'
-            }`}
-          >
-            <span className="h-1.5 w-1.5 rounded-full bg-white" />
-            Shift {isOpen ? 'OPEN' : 'CLOSED'}
-          </span>
-          {isOpen && shift?.openedAt && (
-            <span className="text-xs text-slate-500">since {fmtTime(shift.openedAt)}</span>
-          )}
-        </div>
-        {isOpen ? (
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Stat label="Opening Balance"      value={fmtINR(shift.openingBalance)} />
-            <Stat label="Cash Collected"        value={fmtINR(shift.currentCashCollected)} />
-            <Stat label="System Expected Cash" value={fmtINR(shift.systemExpectedCash)} highlight />
-          </div>
-        ) : (
-          <div className="text-sm text-slate-600">
-            <p>No active shift. Open a shift to start collecting cash payments.</p>
-            <p className="mt-1 text-xs text-slate-500">
-              Patients you registered today: <span className="font-semibold text-slate-700">{patientsToday ?? 0}</span>
-            </p>
-          </div>
-        )}
-        {isOpen && (
-          <p className="mt-3 text-xs text-slate-500">
-            Patients you registered today: <span className="font-semibold text-slate-700">{patientsToday ?? 0}</span>
-          </p>
-        )}
-      </div>
-
-      <div className="flex items-end justify-end">
-        {isOpen ? (
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700"
-          >
-            Close Shift
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={onOpen}
-            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800"
-          >
-            Open Shift
-          </button>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function Stat({ label, value, highlight = false }) {
-  return (
-    <div>
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{label}</div>
-      <div className={`mt-0.5 tabular-nums ${highlight ? 'text-xl font-bold text-emerald-800' : 'text-base font-semibold text-slate-800'}`}>
-        {value}
-      </div>
-    </div>
   );
 }
 

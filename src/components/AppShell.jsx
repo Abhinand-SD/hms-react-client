@@ -1,7 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { Button } from './Button';
-import { ShiftStatusWidget } from './shifts/ShiftStatusWidget';
 import hospitalLogo from '../assets/KHC-logo.svg';
 
 const NAV = [
@@ -83,8 +82,6 @@ export function AppShell({ children }) {
             );
           })}
         </nav>
-
-        <ShiftStatusWidget />
 
         <div className="border-t border-slate-100 px-3 py-3">
           <div className="mb-2 px-1">

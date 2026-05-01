@@ -10,20 +10,6 @@ function fmtINR(n) {
   return `₹${Number(n ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function fmtTime(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleTimeString('en-IN', {
-    hour: '2-digit', minute: '2-digit', hour12: true,
-  });
-}
-
-function fmtDate(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-IN', {
-    day: '2-digit', month: 'short',
-  });
-}
-
 // Group payment-mode codes for the chart bands.
 const CASH_CODES    = new Set(['CASH']);
 const CARD_CODES    = new Set(['CARD', 'POS']);
@@ -64,7 +50,7 @@ export default function AdminDashboard() {
 
   const totals = data?.totals ?? {
     totalRevenue: 0, cashTotal: 0, digitalTotal: 0,
-    patientsVisitedToday: 0, activeDoctors: 0, openShiftsCount: 0,
+    patientsVisitedToday: 0, activeDoctors: 0,
   };
 
   const buckets = useMemo(() => bucketise(data?.revenueBreakdown), [data]);
@@ -112,11 +98,10 @@ export default function AdminDashboard() {
           )}
 
           {/* Top KPIs */}
-          <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <section className="grid grid-cols-2 gap-3 md:grid-cols-3">
             <KPI label="Today's Revenue" value={fmtINR(totals.totalRevenue)} accent="slate" sub={`Cash ${fmtINR(totals.cashTotal)} · Digital ${fmtINR(totals.digitalTotal)}`} />
             <KPI label="Patients Today"  value={totals.patientsVisitedToday} accent="blue" sub="OPD visits today" />
             <KPI label="Active Doctors"  value={totals.activeDoctors}        accent="emerald" sub="Currently active" />
-            <KPI label="Open Shifts"     value={totals.openShiftsCount}      accent="amber" sub="Cashiers on duty" />
           </section>
 
           {/* Revenue breakdown chart */}
@@ -157,76 +142,6 @@ export default function AdminDashboard() {
             )}
           </section>
 
-          {/* Shift audit alerts */}
-          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-              <div>
-                <h2 className="text-sm font-semibold text-slate-900">Shift Audit Alerts</h2>
-                <p className="text-[11px] text-slate-500">
-                  Recently closed shifts (last 7 days)
-                  {data?.shortageCount > 0 && (
-                    <span className="ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
-                      {data.shortageCount} shortage{data.shortageCount > 1 ? 's' : ''}
-                    </span>
-                  )}
-                </p>
-              </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-left">
-                <thead className="bg-slate-50">
-                  <tr>
-                    {['Cashier', 'Closed', 'Opening', 'Expected', 'Declared', 'Variance'].map((c) => (
-                      <th key={c} className="border-b border-slate-100 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                        {c}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {loading && !data ? (
-                    <tr><td colSpan={6} className="px-4 py-6 text-center text-sm text-slate-400">Loading…</td></tr>
-                  ) : (data?.recentClosedShifts?.length ?? 0) === 0 ? (
-                    <tr><td colSpan={6} className="px-4 py-6 text-center text-sm text-slate-400">No recently closed shifts.</td></tr>
-                  ) : (
-                    data.recentClosedShifts.map((s) => {
-                      const isShortage = Number(s.variance) < 0;
-                      const isOverage  = Number(s.variance) > 0;
-                      return (
-                        <tr
-                          key={s.id}
-                          className={isShortage ? 'bg-red-50/70 hover:bg-red-50' : 'hover:bg-slate-50'}
-                        >
-                          <td className="px-4 py-2">
-                            <div className="text-sm font-medium text-slate-800">{s.user?.fullName ?? '—'}</div>
-                            <div className="text-[11px] text-slate-500">{s.user?.role} · {s.user?.employeeId}</div>
-                          </td>
-                          <td className="px-4 py-2 text-xs text-slate-500 tabular-nums">
-                            <div>{fmtDate(s.closedAt)}</div>
-                            <div className="text-[10px] text-slate-400">{fmtTime(s.closedAt)}</div>
-                          </td>
-                          <td className="px-4 py-2 text-sm text-slate-700 tabular-nums">{fmtINR(s.openingBalance)}</td>
-                          <td className="px-4 py-2 text-sm text-slate-700 tabular-nums">{fmtINR(s.systemExpectedCash)}</td>
-                          <td className="px-4 py-2 text-sm text-slate-700 tabular-nums">{fmtINR(s.declaredActualCash)}</td>
-                          <td className="px-4 py-2">
-                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums ${
-                              isShortage
-                                ? 'bg-red-100 text-red-700'
-                                : isOverage
-                                  ? 'bg-blue-100 text-blue-700'
-                                  : 'bg-emerald-100 text-emerald-700'
-                            }`}>
-                              {isShortage ? '−' : isOverage ? '+' : '±'}{fmtINR(Math.abs(s.variance))}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
         </main>
       </div>
     </AppShell>
