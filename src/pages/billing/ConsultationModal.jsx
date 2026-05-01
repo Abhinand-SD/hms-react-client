@@ -97,10 +97,10 @@ function PosTab({ modeName, remaining, busy, onSend }) {
   );
 }
 
-function SplitTab({ cashModeName, nonCashModes, splitCash, setSplitCash, splitPosId, setSplitPosId, remaining, busy, onPay }) {
+function SplitTab({ cashModeName, onlineModeName, splitCash, setSplitCash, remaining, busy, onPay }) {
   const cn = Number(splitCash) || 0;
   const on = Math.max(0, remaining - cn);
-  const valid = splitPosId && cn > 0 && cn < remaining && on > 0;
+  const valid = cn > 0 && cn < remaining && on > 0;
   return (
     <div className="space-y-3.5">
       <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2.5 flex justify-between text-xs font-semibold text-slate-500">
@@ -117,11 +117,8 @@ function SplitTab({ cashModeName, nonCashModes, splitCash, setSplitCash, splitPo
         </div>
       </div>
       <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3.5 space-y-2">
-        <p className="text-xs font-bold text-blue-700 uppercase tracking-wide">Online / Card Portion</p>
-        <select value={splitPosId} onChange={(e) => setSplitPosId(e.target.value)} className={INP}>
-          <option value="">— Select mode —</option>
-          {nonCashModes.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-        </select>
+        <p className="text-xs font-bold text-blue-700 uppercase tracking-wide">Online Portion</p>
+        <ModeBadge name={onlineModeName} />
         <div className="flex items-center rounded-lg border border-blue-100 bg-white px-3.5 py-2.5">
           <span className="text-sm font-semibold text-slate-500 mr-1">₹</span>
           <span className="text-sm font-bold text-slate-900">{on.toFixed(2)}</span>
@@ -219,7 +216,9 @@ export function ConsultationModal({ open, visit, onClose }) {
     const modesP = api.get('/payment-modes', { params: { limit: 100, isActive: 'true' } });
 
     // Create invoice; if 409 it already exists — re-fetch by id.
-    const invoiceP = createConsultationInvoice(visit.id).catch((e) => {
+    // Pass isFollowUp so the billing service can set fee = 0 for walk-in follow-ups
+    // (the flag lives on the visit object returned at registration, not in the DB yet).
+    const invoiceP = createConsultationInvoice(visit.id, visit?.isFollowUp ?? false).catch((e) => {
       if (e.response?.status === 409) {
         const existingId = e.response?.data?.error?.details?.invoiceId;
         if (existingId) return getInvoiceById(existingId);
@@ -244,7 +243,14 @@ export function ConsultationModal({ open, visit, onClose }) {
         setCashAmt(rem.toFixed(2));
         setSplitCash('');
 
-        if (inv.paymentStatus === 'PAID') {
+        if (Number(inv.netAmount) === 0) {
+          setSuccessData({
+            invoiceNumber: inv.invoiceNumber,
+            amountPaid: 0,
+            note: 'Follow-up visit — no consultation fee charged.',
+          });
+          setStage(STAGE.SUCCESS);
+        } else if (inv.paymentStatus === 'PAID') {
           setSuccessData({ invoiceNumber: inv.invoiceNumber, note: 'This invoice is already fully paid.' });
           setStage(STAGE.SUCCESS);
         } else {
@@ -334,7 +340,6 @@ export function ConsultationModal({ open, visit, onClose }) {
   const remaining    = calcRemaining(invoice);
   const cashModeName = modes.find((m) => m.id === cashModeId)?.name ?? 'Cash';
   const posModeName  = modes.find((m) => m.id === posModeId)?.name  ?? 'Online / Card';
-  const nonCashModes = modes.filter((m) => m.id !== cashModeId);
 
   const PAY_TABS = [
     { id: 'cash',  label: 'Cash'        },
@@ -456,7 +461,7 @@ export function ConsultationModal({ open, visit, onClose }) {
 
             {payTab === 'cash'  && <CashTab modeName={cashModeName} cashAmt={cashAmt} setCashAmt={setCashAmt} remaining={remaining} busy={busy} onPay={payCash} />}
             {payTab === 'pos'   && <PosTab  modeName={posModeName}  remaining={remaining} busy={busy} onSend={sendToPos} />}
-            {payTab === 'split' && <SplitTab cashModeName={cashModeName} nonCashModes={nonCashModes} splitCash={splitCash} setSplitCash={setSplitCash} splitPosId={splitPosId} setSplitPosId={setSplitPosId} remaining={remaining} busy={busy} onPay={paySplit} />}
+            {payTab === 'split' && <SplitTab cashModeName={cashModeName} onlineModeName={posModeName} splitCash={splitCash} setSplitCash={setSplitCash} remaining={remaining} busy={busy} onPay={paySplit} />}
           </div>
         )}
       </Modal>

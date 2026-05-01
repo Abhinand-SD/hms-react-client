@@ -1,8 +1,8 @@
 import { api } from '../lib/api';
 
 // Phase 1 — creates a CONSULTATION invoice (doctor fee only)
-export const createConsultationInvoice = (visitId) =>
-  api.post('/invoices/consultation', { visitId });
+export const createConsultationInvoice = (visitId, isFollowUp = false) =>
+  api.post('/invoices/consultation', { visitId, isFollowUp });
 
 // Phase 2 — creates a SERVICES invoice (selected tests only)
 export const createServicesInvoice = (visitId, selectedServiceIds) =>

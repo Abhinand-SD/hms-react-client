@@ -116,7 +116,7 @@ function PatientSearch({ value, onChange }) {
 // ─── Main modal ───────────────────────────────────────────────────────────────
 
 const EMPTY = {
-  patient: null, doctorId: '', visitDate: '', chiefComplaint: '',
+  patient: null, doctorId: '', visitDate: '', isFollowUp: false, chiefComplaint: '',
   bloodPressure: '', pulse: '', temperature: '', weight: '', spo2: '',
 };
 
@@ -160,6 +160,7 @@ export function RegisterVisitModal({ open, onClose }) {
         patientId: form.patient.id,
         doctorId: form.doctorId,
         visitDate: form.visitDate,
+        isFollowUp: form.isFollowUp,
         chiefComplaint: form.chiefComplaint.trim() || undefined,
       };
       if (showVitals) {
@@ -221,6 +222,20 @@ export function RegisterVisitModal({ open, onClose }) {
               onChange={(e) => set('chiefComplaint', e.target.value)} placeholder="e.g. Fever, chest pain" />
           </FF>
         </div>
+
+        {/* Follow-up checkbox */}
+        <label className="flex items-center gap-3 cursor-pointer select-none rounded-lg border border-slate-200 px-3.5 py-2.5 hover:bg-slate-50 transition">
+          <input
+            type="checkbox"
+            checked={form.isFollowUp}
+            onChange={(e) => set('isFollowUp', e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+          />
+          <div>
+            <span className="text-sm font-semibold text-slate-800">Follow-up Visit</span>
+            <span className="ml-2 text-xs text-slate-400">(consultation fee will be ₹0)</span>
+          </div>
+        </label>
 
         {/* Vitals toggle */}
         <div>

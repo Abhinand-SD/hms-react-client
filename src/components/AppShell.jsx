@@ -40,13 +40,13 @@ export function AppShell({ children }) {
   });
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
+    <div className="flex h-screen w-full overflow-hidden bg-slate-50">
       <aside className="flex w-52 shrink-0 flex-col border-r border-slate-200 bg-white">
-        <div className="flex flex-row items-center justify-between gap-2 border-b border-slate-100 px-4 py-3.5">
+        <div className="flex flex-row items-center gap-3 border-b border-slate-100 px-4 py-3.5">
           <img
             src={hospitalLogo}
             alt="Karunya Hrudayalaya Cardiac Center"
-            className="h-9 w-auto max-w-[140px] object-contain"
+            className="h-10 w-auto max-w-[140px] object-contain"
           />
           {user?.role && (
             <span className="text-sm text-gray-500">
@@ -97,9 +97,9 @@ export function AppShell({ children }) {
         </div>
       </aside>
 
-      <div className="flex flex-1 flex-col min-w-0">
+      <main className="flex-1 h-full min-w-0 overflow-y-auto no-scrollbar">
         {children}
-      </div>
+      </main>
     </div>
   );
 }
