@@ -10,6 +10,7 @@ const NAV = [
   { to: '/appointments',  label: 'Appointments', icon: CalendarIcon,    roles: null },
   { to: '/queue',         label: 'Live Queue',   icon: QueueIcon,       roles: null },
   { to: '/billing',       label: 'Billing',      icon: BillingIcon,     roles: ['ADMIN', 'RECEPTIONIST'] },
+  { to: '/diagnostics',   label: 'Diagnostics',  icon: DiagnosticsIcon, roles: ['ADMIN', 'RECEPTIONIST'] },
   { to: '/reports',       label: 'Reports',      icon: ReportsIcon,     roles: ['ADMIN'] },
   { label: 'Masters', divider: true, hideForRoles: ['DOCTOR'] },
   { to: '/masters/services',      label: 'Services',      icon: ServicesIcon, roles: ['ADMIN'] },
@@ -201,6 +202,15 @@ function BillingIcon() {
       <rect x="2" y="1.5" width="9" height="13" rx="1.5" />
       <path d="M5 5h3M5 8h3M5 11h2" />
       <path d="M11 8h3M12.5 6.5v3" />
+    </svg>
+  );
+}
+
+function DiagnosticsIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5.5 1.5h5M6 1.5v4.5L3.5 11.5A1 1 0 0 0 4.4 13h7.2a1 1 0 0 0 .9-1.5L10 6V1.5" />
+      <path d="M4.5 9.5h7" />
     </svg>
   );
 }

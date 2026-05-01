@@ -6,7 +6,6 @@ import { listVisits, updateQueueStatus, updateVitals } from '../../api/visits.ap
 import { AppShell } from '../../components/AppShell';
 import { Button } from '../../components/Button';
 import { Modal } from '../../components/Modal';
-import { RegisterVisitModal } from './RegisterVisitModal';
 import { ConsultationModal } from '../billing/ConsultationModal';
 import { TestsBillingModal } from '../billing/TestsBillingModal';
 
@@ -420,7 +419,6 @@ export default function LiveQueue() {
   const [err, setErr]               = useState('');
   const [busyMap, setBusyMap]       = useState({});
   const [lastRefresh, setLastRefresh] = useState(null);
-  const [registerOpen, setRegisterOpen] = useState(false);
   const [vitalsTarget, setVitalsTarget] = useState(null);
   const [consultationTarget, setConsultationTarget] = useState(null);
   const [testsTarget, setTestsTarget] = useState(null);
@@ -554,13 +552,7 @@ export default function LiveQueue() {
                 <RefreshIcon />
               </button>
 
-              {/* Register walk-in button — today only, ADMIN/RECEPTIONIST */}
-              {canWrite && isToday && (
-                <button onClick={() => setRegisterOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <PlusIcon /> Register Walk-in
-                </button>
-              )}
+              {/* Walk-in registration is now on the Appointments page */}
             </div>
           </div>
         </header>
@@ -615,16 +607,6 @@ export default function LiveQueue() {
       </div>
 
       {/* ── Modals ── */}
-      <RegisterVisitModal
-        open={registerOpen}
-        onClose={(refreshed, newVisit) => {
-          setRegisterOpen(false);
-          if (refreshed) {
-            load();                                    // refresh queue so card appears
-            if (newVisit) setConsultationTarget(newVisit); // open consultation billing immediately
-          }
-        }}
-      />
       <VitalsModal
         visit={vitalsTarget}
         onClose={handleVitalsClose}
@@ -645,9 +627,6 @@ export default function LiveQueue() {
 
 // ─── Micro icons ─────────────────────────────────────────────────────────────
 
-function PlusIcon() {
-  return <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3v10M3 8h10" /></svg>;
-}
 function RefreshIcon() {
   return <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5" /><path d="M8 1v3h3" /></svg>;
 }

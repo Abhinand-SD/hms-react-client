@@ -3,11 +3,13 @@ import { useAuth } from '../../lib/auth';
 import { extractError } from '../../lib/api';
 import { api } from '../../lib/api';
 import { listAppointments, updateStatus, cancelAppointment, checkInAppointment } from '../../api/appointments.api';
+import { updatePatient } from '../../api/patients.api';
 import { listVisits, updateQueueStatus } from '../../api/visits.api';
 import { AppShell } from '../../components/AppShell';
 import { Button } from '../../components/Button';
 import { Modal } from '../../components/Modal';
 import { BookAppointment } from './BookAppointment';
+import { WalkInModal } from './WalkInModal';
 import { ConsultationModal } from '../billing/ConsultationModal';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -17,7 +19,7 @@ const STATUS_CFG = {
   CHECKED_IN:      { label: 'Checked In',   dot: 'bg-amber-500',   tone: 'bg-amber-50 text-amber-700 ring-amber-200' },
   IN_CONSULTATION: { label: 'In Consult',   dot: 'bg-violet-500',  tone: 'bg-violet-50 text-violet-700 ring-violet-200' },
   COMPLETED:       { label: 'Completed',    dot: 'bg-emerald-500', tone: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
-  NO_SHOW:         { label: 'No Show',      dot: 'bg-orange-500',  tone: 'bg-orange-50 text-orange-700 ring-orange-200' },
+  NO_SHOW:         { label: 'Missed',       dot: 'bg-orange-500',  tone: 'bg-orange-50 text-orange-700 ring-orange-200' },
   CANCELLED:       { label: 'Cancelled',    dot: 'bg-slate-400',   tone: 'bg-slate-100 text-slate-500 ring-slate-200' },
 };
 
@@ -26,49 +28,36 @@ const TYPE_CFG = {
   WALK_IN: { label: 'Walk-in',    tone: 'bg-amber-50 text-amber-700 ring-amber-200' },
 };
 
-// Per-status next actions — backend state machine enforces validity
+// Per-status next actions (backend enforces validity)
 const ACTIONS = {
   SCHEDULED:       [
-    { label: 'Check In',     next: 'CHECKED_IN',      cls: 'text-blue-700 hover:bg-blue-50 border-blue-200' },
-    { label: 'No Show',      next: 'NO_SHOW',          cls: 'text-orange-600 hover:bg-orange-50 border-orange-200' },
-    { label: 'Cancel',       next: 'CANCELLED',        cls: 'text-red-600 hover:bg-red-50 border-red-200', needsReason: true },
+    { label: 'Check In',     next: 'CHECKED_IN',  cls: 'text-blue-700 hover:bg-blue-50 border-blue-200' },
+    { label: 'Missed',  next: 'NO_SHOW',      cls: 'text-orange-600 hover:bg-orange-50 border-orange-200' },
+    { label: 'Cancel',       next: 'CANCELLED',    cls: 'text-red-600 hover:bg-red-50 border-red-200', needsReason: true },
   ],
   CHECKED_IN:      [
-    { label: 'Start Consult',next: 'IN_CONSULTATION',  cls: 'text-violet-700 hover:bg-violet-50 border-violet-200' },
-    { label: 'Cancel',       next: 'CANCELLED',        cls: 'text-red-600 hover:bg-red-50 border-red-200', needsReason: true },
+    { label: 'Start Consult', next: 'IN_CONSULTATION', cls: 'text-violet-700 hover:bg-violet-50 border-violet-200' },
+    { label: 'Cancel',        next: 'CANCELLED',         cls: 'text-red-600 hover:bg-red-50 border-red-200', needsReason: true },
   ],
   IN_CONSULTATION: [
-    { label: 'Complete',     next: 'COMPLETED',        cls: 'text-emerald-700 hover:bg-emerald-50 border-emerald-200' },
+    { label: 'Complete', next: 'COMPLETED', cls: 'text-emerald-700 hover:bg-emerald-50 border-emerald-200' },
   ],
   COMPLETED: [], NO_SHOW: [], CANCELLED: [],
 };
 
-// Role-based action filtering
 const ROLE_ALLOWED = {
   ADMIN:        ['CHECKED_IN', 'IN_CONSULTATION', 'COMPLETED', 'NO_SHOW', 'CANCELLED'],
-  RECEPTIONIST: ['CHECKED_IN', 'CANCELLED'],
+  RECEPTIONIST: ['CHECKED_IN', 'CANCELLED', 'NO_SHOW'],
   DOCTOR:       ['IN_CONSULTATION', 'COMPLETED', 'NO_SHOW'],
 };
 
 // ─── Utility ─────────────────────────────────────────────────────────────────
 
-function today() {
-  return new Date().toISOString().split('T')[0];
-}
-
-function fmtTime(t) {
-  if (!t) return '—';
-  const [h, m] = t.split(':');
-  const hour = parseInt(h, 10);
-  const suffix = hour >= 12 ? 'PM' : 'AM';
-  const display = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-  return `${display}:${m} ${suffix}`;
-}
+function today() { return new Date().toISOString().split('T')[0]; }
 
 function fmtDate(d) {
   if (!d) return '';
-  const dt = new Date(d);
-  return dt.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+  return new Date(d).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -109,7 +98,7 @@ function StatCard({ label, value, tone, icon }) {
 function SkeletonRow() {
   return (
     <tr>
-      {[40, 120, 110, 80, 90, 60, 100].map((w, i) => (
+      {[120, 110, 80, 80, 90, 60, 100].map((w, i) => (
         <td key={i} className="px-4 py-3.5">
           <div className="h-3.5 animate-pulse rounded bg-slate-100" style={{ width: w }} />
         </td>
@@ -122,8 +111,8 @@ function SkeletonRow() {
 
 function CancelModal({ appointment, onClose }) {
   const [reason, setReason] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
+  const [busy, setBusy]     = useState(false);
+  const [err, setErr]       = useState('');
 
   useEffect(() => { setReason(''); setErr(''); }, [appointment]);
 
@@ -142,41 +131,124 @@ function CancelModal({ appointment, onClose }) {
     : '';
 
   return (
-    <Modal
-      open={!!appointment}
-      onClose={() => onClose(false)}
-      title="Cancel Appointment"
-      size="sm"
+    <Modal open={!!appointment} onClose={() => onClose(false)} title="Cancel Appointment" size="sm"
       footer={
         <>
           <Button variant="secondary" size="md" onClick={() => onClose(false)} disabled={busy}>Keep</Button>
-          <button
-            onClick={confirm}
-            disabled={busy}
-            className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60 transition"
-          >
+          <button onClick={confirm} disabled={busy}
+            className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60 transition">
             {busy ? 'Cancelling…' : 'Confirm Cancel'}
           </button>
         </>
       }
     >
       <p className="mb-4 text-sm text-slate-600">
-        Cancel appointment for <span className="font-semibold text-slate-800">{patName}</span> at{' '}
-        <span className="font-semibold">{fmtTime(appointment?.appointmentTime)}</span>?
+        Cancel appointment for <span className="font-semibold text-slate-800">{patName}</span>?
       </p>
       <div className="flex flex-col gap-1.5">
-        <label className="text-xs font-semibold text-slate-600">
-          Reason <span className="text-red-500">*</span>
-        </label>
-        <textarea
-          rows={3}
-          value={reason}
+        <label className="text-xs font-semibold text-slate-600">Reason <span className="text-red-500">*</span></label>
+        <textarea rows={3} value={reason}
           onChange={(e) => { setReason(e.target.value); setErr(''); }}
           placeholder="e.g. Patient requested cancellation"
-          className="block w-full resize-none rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm placeholder:text-slate-400 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-400/20"
-        />
+          className="block w-full resize-none rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm placeholder:text-slate-400 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-400/20" />
         {err && <p className="text-xs font-medium text-red-600">⚠ {err}</p>}
       </div>
+    </Modal>
+  );
+}
+
+// ─── Complete Profile modal (shown before check-in for pre-booked patients) ───
+
+const INP = 'block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20';
+
+function CompleteProfileModal({ appointment, onClose }) {
+  const [form, setForm] = useState({ age: '', gender: 'MALE', city: '' });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr]   = useState('');
+
+  useEffect(() => {
+    if (!appointment) return;
+    const p = appointment.patient ?? {};
+    setForm({
+      age:    p.age     != null ? String(p.age) : '',
+      gender: p.gender  || 'MALE',
+      city:   p.city    || '',
+    });
+    setErr('');
+  }, [appointment]);
+
+  function set(k, v) { setForm((f) => ({ ...f, [k]: v })); }
+
+  async function confirm() {
+    if (!form.gender) { setErr('Gender is required.'); return; }
+    setBusy(true);
+    setErr('');
+    try {
+      // Update patient details first
+      const updates = { gender: form.gender };
+      if (form.age)  updates.age  = parseInt(form.age, 10);
+      if (form.city.trim()) updates.city = form.city.trim();
+      await updatePatient(appointment.patient.id, updates);
+
+      // Then perform check-in
+      const { data } = await checkInAppointment(appointment.id);
+      onClose(true, data.data.visit);
+    } catch (e) {
+      setErr(extractError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const patName = appointment
+    ? `${appointment.patient?.firstName ?? ''}${appointment.patient?.lastName ? ` ${appointment.patient.lastName}` : ''}`
+    : '';
+
+  return (
+    <Modal open={!!appointment} onClose={() => !busy && onClose(false)} title="Complete Patient Profile" size="sm"
+      footer={
+        <>
+          <Button variant="secondary" size="md" onClick={() => onClose(false)} disabled={busy}>Cancel</Button>
+          <button onClick={confirm} disabled={busy}
+            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60 transition">
+            {busy ? 'Checking in…' : 'Confirm & Check In'}
+          </button>
+        </>
+      }
+    >
+      <p className="mb-4 text-sm text-slate-500">
+        Confirm or update details for{' '}
+        <span className="font-semibold text-slate-800">{patName}</span> before checking in.
+      </p>
+      <div className="space-y-3">
+        <div>
+          <label className="text-xs font-semibold text-slate-600">Gender <span className="text-red-500">*</span></label>
+          <select className={`mt-1.5 ${INP}`} value={form.gender} onChange={(e) => set('gender', e.target.value)}>
+            <option value="MALE">Male</option>
+            <option value="FEMALE">Female</option>
+            <option value="OTHER">Other</option>
+          </select>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-semibold text-slate-600">Age (years)</label>
+            <input type="number" min="0" max="150" className={`mt-1.5 ${INP}`} value={form.age}
+              onChange={(e) => set('age', e.target.value)} placeholder="35" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-600">City</label>
+            <input className={`mt-1.5 ${INP}`} value={form.city}
+              onChange={(e) => set('city', e.target.value)} placeholder="Kochi" />
+          </div>
+        </div>
+        {appointment?.opNumber && (
+          <div className="flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3.5 py-2.5">
+            <span className="text-xs text-slate-500">OP Number:</span>
+            <span className="font-mono text-sm font-bold text-blue-700">{appointment.opNumber}</span>
+          </div>
+        )}
+      </div>
+      {err && <p className="mt-3 text-xs font-medium text-red-600">⚠ {err}</p>}
     </Modal>
   );
 }
@@ -185,8 +257,8 @@ function CancelModal({ appointment, onClose }) {
 
 export default function AppointmentsDashboard() {
   const { user: me } = useAuth();
-  const isDoctor       = me?.role === 'DOCTOR';
-  const canWrite       = me?.role === 'ADMIN' || me?.role === 'RECEPTIONIST';
+  const isDoctor  = me?.role === 'DOCTOR';
+  const canWrite  = me?.role === 'ADMIN' || me?.role === 'RECEPTIONIST';
 
   const [date, setDate]               = useState(today);
   const [doctorFilter, setDoctorFilter] = useState('');
@@ -195,13 +267,14 @@ export default function AppointmentsDashboard() {
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading]         = useState(true);
   const [err, setErr]                 = useState('');
-  const [busy, setBusy]               = useState({}); // { [apptId]: true }
+  const [busy, setBusy]               = useState({});
   const [bookOpen, setBookOpen]       = useState(false);
+  const [walkInOpen, setWalkInOpen]   = useState(false);
   const [cancelTarget, setCancelTarget] = useState(null);
+  const [checkInTarget, setCheckInTarget] = useState(null); // appointment for CompleteProfileModal
   const [consultationVisit, setConsultationVisit] = useState(null);
   const [doneApptIds, setDoneApptIds] = useState(() => new Set());
 
-  // Load doctors for filter dropdown (Admin/Receptionist only)
   useEffect(() => {
     if (isDoctor) return;
     api.get('/doctors', { params: { pageSize: 100, isActive: 'true' } })
@@ -217,9 +290,6 @@ export default function AppointmentsDashboard() {
       if (!isDoctor && doctorFilter) apptParams.doctorId = doctorFilter;
       if (statusFilter) apptParams.status = statusFilter;
 
-      // Fetch done visits in parallel so we can count "completed" correctly:
-      // in the new check-in workflow the appointment stays CHECKED_IN and
-      // completion is tracked on the OPD visit (queueStatus DONE).
       const visitParams = { date, queueStatus: 'DONE', limit: 100 };
       if (!isDoctor && doctorFilter) visitParams.doctorId = doctorFilter;
 
@@ -230,7 +300,6 @@ export default function AppointmentsDashboard() {
 
       setAppointments(apptRes.data.data.appointments);
 
-      // Build a set of appointment IDs that have a linked DONE visit
       const ids = new Set(
         (visitsRes.data.data.visits ?? [])
           .map((v) => v.appointment?.id)
@@ -246,31 +315,13 @@ export default function AppointmentsDashboard() {
 
   useEffect(() => { load(); }, [date, doctorFilter, statusFilter]);
 
-  // ── Status quick-action ──────────────────────────────────────────────────
   async function doStatusUpdate(apptId, nextStatus) {
     setBusy((b) => ({ ...b, [apptId]: true }));
     try {
       await updateStatus(apptId, { status: nextStatus });
-      // Optimistically update the row so the UI responds instantly
       setAppointments((prev) =>
         prev.map((a) => (a.id === apptId ? { ...a, status: nextStatus } : a)),
       );
-    } catch (e) {
-      setErr(extractError(e));
-    } finally {
-      setBusy((b) => ({ ...b, [apptId]: false }));
-    }
-  }
-
-  async function handleCheckIn(apptId) {
-    setBusy((b) => ({ ...b, [apptId]: true }));
-    setErr('');
-    try {
-      const { data } = await checkInAppointment(apptId);
-      setAppointments((prev) =>
-        prev.map((a) => (a.id === apptId ? { ...a, status: 'CHECKED_IN' } : a)),
-      );
-      setConsultationVisit(data.data.visit);
     } catch (e) {
       setErr(extractError(e));
     } finally {
@@ -283,12 +334,22 @@ export default function AppointmentsDashboard() {
     if (refreshed) load();
   }
 
-  // ── Derived stats ────────────────────────────────────────────────────────
+  function handleCompleteProfileClose(refreshed, visit) {
+    const apptId = checkInTarget?.id; // capture before clearing
+    setCheckInTarget(null);
+    if (refreshed && visit) {
+      setAppointments((prev) =>
+        prev.map((a) => (a.id === apptId ? { ...a, status: 'CHECKED_IN' } : a)),
+      );
+      setConsultationVisit(visit);
+    } else if (refreshed) {
+      load();
+    }
+  }
+
   const stats = {
     total:     appointments.length,
     pending:   appointments.filter((a) => ['SCHEDULED', 'CHECKED_IN', 'IN_CONSULTATION'].includes(a.status)).length,
-    // COMPLETED = explicit terminal status (old direct-status-update flow)
-    //           OR appointment has a DONE visit (new check-in → queue flow)
     completed: appointments.filter((a) => a.status === 'COMPLETED' || doneApptIds.has(a.id)).length,
     absent:    appointments.filter((a) => ['CANCELLED', 'NO_SHOW'].includes(a.status)).length,
   };
@@ -302,56 +363,46 @@ export default function AppointmentsDashboard() {
         {/* ── Sticky header ── */}
         <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 backdrop-blur-sm">
           <div className="flex flex-wrap items-center justify-between gap-4 px-8 py-4">
-            {/* Title */}
             <div>
               <h1 className="text-lg font-bold text-slate-900">Appointments</h1>
               <p className="text-xs text-slate-500">{fmtDate(date)}</p>
             </div>
 
-            {/* Controls */}
             <div className="flex flex-wrap items-center gap-3">
-              {/* Date picker */}
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => { setDate(e.target.value); }}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              />
+              <input type="date" value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
 
-              {/* Doctor filter — hidden for DOCTOR role */}
               {!isDoctor && doctors.length > 0 && (
-                <select
-                  value={doctorFilter}
-                  onChange={(e) => setDoctorFilter(e.target.value)}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                >
+                <select value={doctorFilter} onChange={(e) => setDoctorFilter(e.target.value)}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20">
                   <option value="">All Doctors</option>
-                  {doctors.map((d) => (
-                    <option key={d.id} value={d.id}>{d.name}</option>
-                  ))}
+                  {doctors.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
                 </select>
               )}
 
-              {/* Status filter */}
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              >
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20">
                 <option value="">All Statuses</option>
                 {Object.entries(STATUS_CFG).map(([k, v]) => (
                   <option key={k} value={k}>{v.label}</option>
                 ))}
               </select>
 
-              {/* Book button */}
               {canWrite && (
-                <button
-                  onClick={() => setBookOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <PlusIcon /> Book Appointment
-                </button>
+                <>
+                  {/* Walk-in — prominent green button */}
+                  <button onClick={() => setWalkInOpen(true)}
+                    className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    <UserPlusIcon /> Walk-in
+                  </button>
+
+                  {/* Book Appointment */}
+                  <button onClick={() => setBookOpen(true)}
+                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <PlusIcon /> Book Appointment
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -362,34 +413,13 @@ export default function AppointmentsDashboard() {
           {/* ── Stats strip ── */}
           {!loading && !err && (
             <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-              <StatCard
-                label="Total"
-                value={stats.total}
-                tone="border-slate-200 bg-white text-slate-700"
-                icon={<CalendarMiniIcon />}
-              />
-              <StatCard
-                label="Pending"
-                value={stats.pending}
-                tone="border-blue-200 bg-blue-50 text-blue-800"
-                icon={<ClockIcon />}
-              />
-              <StatCard
-                label="Completed"
-                value={stats.completed}
-                tone="border-emerald-200 bg-emerald-50 text-emerald-800"
-                icon={<CheckIcon />}
-              />
-              <StatCard
-                label="Cancelled / No-show"
-                value={stats.absent}
-                tone="border-slate-200 bg-slate-100 text-slate-600"
-                icon={<XCircleIcon />}
-              />
+              <StatCard label="Total"    value={stats.total}     tone="border-slate-200 bg-white text-slate-700"        icon={<CalendarMiniIcon />} />
+              <StatCard label="Pending"  value={stats.pending}   tone="border-blue-200 bg-blue-50 text-blue-800"       icon={<ClockIcon />} />
+              <StatCard label="Completed" value={stats.completed} tone="border-emerald-200 bg-emerald-50 text-emerald-800" icon={<CheckIcon />} />
+              <StatCard label="Cancelled / Missed" value={stats.absent} tone="border-slate-200 bg-slate-100 text-slate-600" icon={<XCircleIcon />} />
             </div>
           )}
 
-          {/* ── Error banner ── */}
           {err && (
             <div className="mb-5 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3.5 text-sm font-medium text-red-700">
               <WarnIcon /> {err}
@@ -402,9 +432,9 @@ export default function AppointmentsDashboard() {
               <table className="min-w-full divide-y divide-slate-100">
                 <thead>
                   <tr className="bg-slate-50/80 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    <th className="px-4 py-3.5 w-24">Time</th>
                     <th className="px-4 py-3.5">Patient</th>
                     {!isDoctor && <th className="px-4 py-3.5">Doctor</th>}
+                    <th className="px-4 py-3.5">OP No.</th>
                     <th className="px-4 py-3.5">Type</th>
                     <th className="px-4 py-3.5">Status</th>
                     <th className="px-4 py-3.5 text-right">Fee</th>
@@ -412,8 +442,7 @@ export default function AppointmentsDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white text-sm">
-                  {loading &&
-                    Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)}
+                  {loading && Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)}
 
                   {!loading && !err && appointments.length === 0 && (
                     <tr>
@@ -424,12 +453,16 @@ export default function AppointmentsDashboard() {
                           </span>
                           <p className="text-sm font-semibold text-slate-500">No appointments for this date</p>
                           {canWrite && (
-                            <button
-                              onClick={() => setBookOpen(true)}
-                              className="mt-1 rounded-lg border border-blue-200 bg-blue-50 px-4 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition"
-                            >
-                              + Book first appointment
-                            </button>
+                            <div className="flex gap-2 mt-1">
+                              <button onClick={() => setWalkInOpen(true)}
+                                className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 transition">
+                                + Walk-in
+                              </button>
+                              <button onClick={() => setBookOpen(true)}
+                                className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition">
+                                + Book appointment
+                              </button>
+                            </div>
                           )}
                         </div>
                       </td>
@@ -437,21 +470,13 @@ export default function AppointmentsDashboard() {
                   )}
 
                   {!loading && !err && appointments.map((appt) => {
-                    const rowBusy = !!busy[appt.id];
+                    const rowBusy    = !!busy[appt.id];
                     const rowActions = (ACTIONS[appt.status] ?? [])
                       .filter((a) => allowedNextStatuses.includes(a.next));
 
                     return (
                       <tr key={appt.id} className="group hover:bg-slate-50/60 transition-colors">
 
-                        {/* Time */}
-                        <td className="px-4 py-3.5">
-                          <span className="font-mono text-sm font-semibold text-slate-800">
-                            {fmtTime(appt.appointmentTime)}
-                          </span>
-                        </td>
-
-                        {/* Patient */}
                         <td className="px-4 py-3.5">
                           <div className="flex items-center gap-2.5">
                             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[11px] font-bold text-slate-600">
@@ -470,7 +495,6 @@ export default function AppointmentsDashboard() {
                           </div>
                         </td>
 
-                        {/* Doctor — hidden for DOCTOR role */}
                         {!isDoctor && (
                           <td className="px-4 py-3.5">
                             <div className="font-medium text-slate-800">{appt.doctor?.name}</div>
@@ -478,7 +502,14 @@ export default function AppointmentsDashboard() {
                           </td>
                         )}
 
-                        {/* Type */}
+                        {/* OP Number */}
+                        <td className="px-4 py-3.5">
+                          {appt.opNumber
+                            ? <span className="inline-block rounded-md bg-blue-50 px-2 py-0.5 font-mono text-xs font-bold text-blue-700">{appt.opNumber}</span>
+                            : <span className="text-[11px] italic text-slate-300">—</span>
+                          }
+                        </td>
+
                         <td className="px-4 py-3.5">
                           <TypeBadge type={appt.type} />
                           {appt.isFollowUp && (
@@ -488,35 +519,30 @@ export default function AppointmentsDashboard() {
                           )}
                         </td>
 
-                        {/* Status */}
                         <td className="px-4 py-3.5">
                           <StatusBadge status={appt.status} />
                         </td>
 
-                        {/* Fee */}
                         <td className="px-4 py-3.5 text-right">
                           <span className="font-mono text-sm font-semibold text-slate-700">
                             ₹{parseFloat(appt.consultationFee).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                           </span>
                         </td>
 
-                        {/* Actions */}
                         <td className="px-4 py-3.5">
                           <div className="flex items-center justify-end gap-1.5">
                             {rowBusy ? (
                               <SpinnerIcon />
                             ) : rowActions.length > 0 ? (
                               rowActions.map((action) => (
-                                <button
-                                  key={action.next}
-                                  disabled={rowBusy}
+                                <button key={action.next} disabled={rowBusy}
                                   onClick={() => {
                                     if (action.needsReason) return setCancelTarget(appt);
-                                    if (action.next === 'CHECKED_IN') return handleCheckIn(appt.id);
+                                    // Check-in: open Complete Profile modal first
+                                    if (action.next === 'CHECKED_IN') return setCheckInTarget(appt);
                                     doStatusUpdate(appt.id, action.next);
                                   }}
-                                  className={`rounded-md border px-2.5 py-1 text-xs font-semibold transition focus:outline-none ${action.cls}`}
-                                >
+                                  className={`rounded-md border px-2.5 py-1 text-xs font-semibold transition focus:outline-none ${action.cls}`}>
                                   {action.label}
                                 </button>
                               ))
@@ -525,7 +551,6 @@ export default function AppointmentsDashboard() {
                             )}
                           </div>
                         </td>
-
                       </tr>
                     );
                   })}
@@ -542,19 +567,34 @@ export default function AppointmentsDashboard() {
         initialDate={date}
         onClose={(refreshed) => { setBookOpen(false); if (refreshed) load(); }}
       />
+
+      <WalkInModal
+        open={walkInOpen}
+        onClose={(refreshed, visit) => {
+          setWalkInOpen(false);
+          if (refreshed) {
+            load();
+            if (visit) setConsultationVisit(visit);
+          }
+        }}
+      />
+
       <CancelModal
         appointment={cancelTarget}
         onClose={handleCancelClose}
       />
+
+      <CompleteProfileModal
+        appointment={checkInTarget}
+        onClose={handleCompleteProfileClose}
+      />
+
       <ConsultationModal
         open={!!consultationVisit}
         visit={consultationVisit}
         onClose={async (paid) => {
           const visitToQueue = consultationVisit;
           setConsultationVisit(null);
-          // On successful payment, ensure the visit is in WAITING so it shows
-          // up in the Live Queue without an extra manual click. We swallow
-          // any error (e.g. already WAITING) — the reload will reflect truth.
           if (paid && visitToQueue?.id && visitToQueue.queueStatus !== 'WAITING') {
             try {
               await updateQueueStatus(visitToQueue.id, { queueStatus: 'WAITING' });
@@ -571,6 +611,9 @@ export default function AppointmentsDashboard() {
 
 function PlusIcon() {
   return <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3v10M3 8h10" /></svg>;
+}
+function UserPlusIcon() {
+  return <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="6" cy="5" r="3" /><path d="M1 14c0-3 2.2-5 5-5" /><path d="M12 9v6M9 12h6" /></svg>;
 }
 function CalendarMiniIcon({ size = 18 }) {
   return <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1.5" y="2.5" width="13" height="12" rx="1.5" /><path d="M1.5 6.5h13M5 1.5v2M11 1.5v2" /></svg>;

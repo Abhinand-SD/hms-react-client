@@ -10,12 +10,12 @@ import { Button } from '../../components/Button';
 
 const GENDER_LABEL = { MALE: 'Male', FEMALE: 'Female', OTHER: 'Other' };
 
-const BILL_STATUS_TONE = {
-  DRAFT:    'bg-slate-100 text-slate-600 ring-slate-200',
-  PARTIAL:  'bg-amber-50  text-amber-700  ring-amber-200',
-  PAID:     'bg-emerald-50 text-emerald-700 ring-emerald-200',
-  VOID:     'bg-red-50   text-red-700   ring-red-200',
-  REFUNDED: 'bg-orange-50 text-orange-700 ring-orange-200',
+// Invoice payment status → display config
+const PAY_STATUS = {
+  PAID:      { label: 'Paid',      cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
+  PENDING:   { label: 'Pending',   cls: 'bg-amber-50 text-amber-700 ring-amber-200' },
+  PARTIAL:   { label: 'Partial',   cls: 'bg-blue-50 text-blue-700 ring-blue-200' },
+  CANCELLED: { label: 'Cancelled', cls: 'bg-slate-100 text-slate-500 ring-slate-200' },
 };
 
 // Deterministic avatar colour based on first char of name
@@ -137,31 +137,39 @@ function VisitHistory({ patientId }) {
                   <th className="px-5 py-3">Date</th>
                   <th className="px-5 py-3">Doctor</th>
                   <th className="px-5 py-3">Specialization</th>
-                  <th className="px-5 py-3">Bill No.</th>
+                  <th className="px-5 py-3">Invoice No.</th>
                   <th className="px-5 py-3 text-right">Amount</th>
-                  <th className="px-5 py-3">Status</th>
+                  <th className="px-5 py-3">Payment</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
-                {visits.map((v) => (
+                {visits.map((v) => {
+                  // Derive billing fields from the real OpdVisit + invoices structure
+                  const consultInv  = v.invoices?.find((i) => i.invoiceType === 'CONSULTATION');
+                  const totalAmount = v.invoices?.reduce((s, i) => s + Number(i.netAmount), 0) ?? 0;
+                  const payStatus   = consultInv ? (PAY_STATUS[consultInv.paymentStatus] ?? PAY_STATUS.PENDING) : null;
+                  return (
                   <tr key={v.id} className="transition-colors hover:bg-slate-50/60">
-                    <td className="px-5 py-3 font-mono text-xs font-semibold text-slate-500">{v.opNumber}</td>
-                    <td className="px-5 py-3 text-slate-700">{fmtDate(v.appointmentDate) ?? '—'}</td>
-                    <td className="px-5 py-3 font-semibold text-slate-900">{v.doctor?.name}</td>
-                    <td className="px-5 py-3 text-slate-500">{v.doctor?.specialization}</td>
-                    <td className="px-5 py-3 font-mono text-xs text-slate-500">{v.bill?.billNumber || '—'}</td>
+                    <td className="px-5 py-3 font-mono text-xs font-semibold text-blue-700">{v.opNumber}</td>
+                    <td className="px-5 py-3 text-slate-700">{fmtDate(v.visitDate) ?? '—'}</td>
+                    <td className="px-5 py-3 font-semibold text-slate-900">{v.doctor?.name ?? '—'}</td>
+                    <td className="px-5 py-3 text-slate-500">{v.doctor?.specialization ?? '—'}</td>
+                    <td className="px-5 py-3 font-mono text-xs text-slate-500">
+                      {consultInv?.invoiceNumber ?? '—'}
+                    </td>
                     <td className="px-5 py-3 text-right tabular-nums font-semibold text-slate-800">
-                      {v.bill?.totalAmount != null
-                        ? `₹${parseFloat(v.bill.totalAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
+                      {v.invoices?.length
+                        ? `₹${totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
                         : '—'}
                     </td>
                     <td className="px-5 py-3">
-                      {v.bill?.status
-                        ? <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${BILL_STATUS_TONE[v.bill.status] || BILL_STATUS_TONE.DRAFT}`}>{v.bill.status}</span>
-                        : <span className="text-slate-300">—</span>}
+                      {payStatus
+                        ? <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${payStatus.cls}`}>{payStatus.label}</span>
+                        : <span className="text-slate-300 text-xs italic">Unbilled</span>}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -326,10 +334,10 @@ export default function PatientDetail() {
             </div>
           </div>
 
-          {/* ── Body grid ── */}
-          <div className="grid gap-5 lg:grid-cols-3 lg:items-start">
+          {/* ── Body grid — Demographics + Address (left) | Registration Info (right, stretched) ── */}
+          <div className="grid gap-5 lg:grid-cols-3">
 
-            {/* Left 2-col span */}
+            {/* Left 2-col span: Demographics + Address */}
             <div className="space-y-5 lg:col-span-2">
 
               {/* Demographics */}
@@ -353,13 +361,10 @@ export default function PatientDetail() {
                   <DetailField label="Pincode" value={patient.pincode} mono />
                 </dl>
               </SectionCard>
-
-              {/* Visit history */}
-              <VisitHistory patientId={patient.id} />
             </div>
 
-            {/* Right sidebar */}
-            <div className="space-y-5">
+            {/* Right column: stretches to match the left column height */}
+            <div className="flex h-full flex-col gap-5">
 
               {(patient.emergencyContactName || patient.emergencyContactMobile) && (
                 <SectionCard icon={<HeartIcon />} title="Emergency Contact">
@@ -370,7 +375,8 @@ export default function PatientDetail() {
                 </SectionCard>
               )}
 
-              <SectionCard icon={<InfoIcon />} title="Registration Info">
+              {/* h-full so this card expands to fill remaining right-column space */}
+              <SectionCard icon={<InfoIcon />} title="Registration Info" className="h-full">
                 <dl className="space-y-5">
                   <DetailField label="Registered On" value={fmtDate(patient.createdAt)} />
                   <DetailField
@@ -389,6 +395,12 @@ export default function PatientDetail() {
 
             </div>
           </div>
+
+          {/* ── Visit History — full-width below the 3-col grid ── */}
+          <div className="mt-5">
+            <VisitHistory patientId={patient.id} />
+          </div>
+
         </main>
       </div>
     </AppShell>

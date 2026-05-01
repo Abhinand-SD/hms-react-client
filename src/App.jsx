@@ -15,6 +15,7 @@ import PatientDetail from './pages/patients/PatientDetail';
 import AppointmentsDashboard from './pages/appointments/AppointmentsDashboard';
 import LiveQueue from './pages/queue/LiveQueue';
 import BillingDashboard from './pages/billing/BillingDashboard';
+import DiagnosticsDashboard from './pages/diagnostics/DiagnosticsDashboard';
 import FinancialReports from './pages/reports/FinancialReports';
 
 export default function App() {
@@ -39,7 +40,10 @@ export default function App() {
           <Route path="/queue" element={<RequireAuth><LiveQueue /></RequireAuth>} />
 
           {/* Billing & Checkout */}
-          <Route path="/billing" element={<RequireRole roles={['ADMIN', 'RECEPTIONIST']}><BillingDashboard /></RequireRole>} />
+          <Route path="/billing"      element={<RequireRole roles={['ADMIN', 'RECEPTIONIST']}><BillingDashboard /></RequireRole>} />
+
+          {/* Diagnostic Tests */}
+          <Route path="/diagnostics" element={<RequireRole roles={['ADMIN', 'RECEPTIONIST']}><DiagnosticsDashboard /></RequireRole>} />
 
           {/* Reports (Admin) */}
           <Route path="/reports" element={<RequireRole roles={['ADMIN']}><FinancialReports /></RequireRole>} />

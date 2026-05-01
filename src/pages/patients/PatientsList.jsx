@@ -108,11 +108,7 @@ export default function PatientsList() {
             </div>
             <p className="mt-1 text-sm text-slate-500">Search by name, mobile number, or UHID.</p>
           </div>
-          {canWrite && (
-            <Button onClick={() => navigate('/patients/new')}>
-              <PlusIcon /> Register Patient
-            </Button>
-          )}
+          {/* Patients are registered via Quick Book or Walk-in — no standalone register button */}
         </div>
 
         {/* Search + filters */}
@@ -192,14 +188,9 @@ export default function PatientsList() {
                       <p className="text-sm font-medium text-slate-600">
                         {hasFilters ? 'No patients match your search.' : 'No patients registered yet.'}
                       </p>
-                      {!hasFilters && canWrite && (
+                      {!hasFilters && (
                         <p className="mt-2 text-xs text-slate-400">
-                          <button
-                            onClick={() => navigate('/patients/new')}
-                            className="text-slate-700 underline underline-offset-2 hover:text-slate-900"
-                          >
-                            Register the first patient
-                          </button>
+                          Patients are created automatically via the Quick Book or Walk-in flows on the Appointments page.
                         </p>
                       )}
                     </td>
@@ -280,14 +271,6 @@ export default function PatientsList() {
         </div>
       </main>
     </AppShell>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M8 3v10M3 8h10" />
-    </svg>
   );
 }
 

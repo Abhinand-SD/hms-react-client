@@ -97,9 +97,9 @@ export default function ReceptionistDashboard() {
             </h2>
             <div className="grid gap-3 sm:grid-cols-2">
               <QuickActionCard
-                to="/patients/new"
-                title="Register New Patient"
-                description="Capture demographics and generate a UHID."
+                to="/appointments"
+                title="Book / Walk-In"
+                description="Quick Book or register a walk-in patient with OP number."
                 accent="bg-blue-600 hover:bg-blue-700"
                 icon={<UserPlusIcon />}
               />

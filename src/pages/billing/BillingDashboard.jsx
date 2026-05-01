@@ -3,16 +3,14 @@ import { AppShell } from '../../components/AppShell';
 import { extractError } from '../../lib/api';
 import { listVisits } from '../../api/visits.api';
 import { ConsultationModal } from './ConsultationModal';
-import { TestsBillingModal } from './TestsBillingModal';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
 const INV_STATUS = {
-  PENDING:          { label: 'Pending',       cls: 'bg-amber-50 text-amber-700 ring-amber-200' },
-  PARTIAL:          { label: 'Partial',       cls: 'bg-blue-50 text-blue-700 ring-blue-200' },
-  PAID:             { label: 'Paid',          cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
-  CANCELLED:        { label: 'Void',          cls: 'bg-slate-100 text-slate-500 ring-slate-200' },
-  SERVICES_PENDING: { label: 'Tests Pending', cls: 'bg-teal-50 text-teal-700 ring-teal-200' },
+  PENDING:   { label: 'Pending', cls: 'bg-amber-50 text-amber-700 ring-amber-200' },
+  PARTIAL:   { label: 'Partial', cls: 'bg-blue-50 text-blue-700 ring-blue-200' },
+  PAID:      { label: 'Paid',    cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
+  CANCELLED: { label: 'Void',   cls: 'bg-slate-100 text-slate-500 ring-slate-200' },
 };
 
 const UNBILLED = { label: 'Unbilled', cls: 'bg-rose-50 text-rose-600 ring-rose-200' };
@@ -68,23 +66,15 @@ function InvBadge({ status }) {
 
 // ─── Table row ────────────────────────────────────────────────────────────────
 
-function VisitRow({ visit, invoiceData, onPayConsultation, onAddTests }) {
-  const consultation    = invoiceData?.consultation ?? null;
-  const servicesInvs    = invoiceData?.services ?? [];
-  const consultPaid     = consultation?.paymentStatus === 'PAID';
-  const servicesPending = servicesInvs.some((s) => s.paymentStatus !== 'PAID');
+function VisitRow({ visit, invoiceData, onPayConsultation }) {
+  const consultation = invoiceData?.consultation ?? null;
+  const consultPaid  = consultation?.paymentStatus === 'PAID';
 
   const totalAmount = invoiceData
-    ? Number(consultation?.netAmount ?? 0) + servicesInvs.reduce((s, i) => s + Number(i.netAmount), 0)
+    ? Number(consultation?.netAmount ?? 0)
     : null;
 
-  const overallStatus = !consultation
-    ? null
-    : consultation.paymentStatus !== 'PAID'
-      ? consultation.paymentStatus
-      : servicesPending
-        ? 'SERVICES_PENDING'
-        : 'PAID';
+  const overallStatus = !consultation ? null : consultation.paymentStatus;
 
   return (
     <tr className="group hover:bg-slate-50 transition-colors">
@@ -112,30 +102,23 @@ function VisitRow({ visit, invoiceData, onPayConsultation, onAddTests }) {
         <InvBadge status={overallStatus} />
       </td>
       <td className="whitespace-nowrap px-4 py-3 text-right">
-        {!consultation ? (
+        {!consultation || !consultPaid ? (
           <button
             type="button"
             onClick={() => onPayConsultation(visit)}
-            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition shadow-sm bg-blue-600 text-white hover:bg-blue-700"
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition shadow-sm ${
+              !consultation
+                ? 'bg-blue-600 text-white hover:bg-blue-700'
+                : 'bg-amber-500 text-white hover:bg-amber-600'
+            }`}
           >
-            <CashRegisterIcon /> Pay Consultation
-          </button>
-        ) : !consultPaid ? (
-          <button
-            type="button"
-            onClick={() => onPayConsultation(visit)}
-            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition shadow-sm bg-amber-500 text-white hover:bg-amber-600"
-          >
-            <CashRegisterIcon /> Complete Payment
+            <CashRegisterIcon />
+            {!consultation ? 'Pay Consultation' : 'Complete Payment'}
           </button>
         ) : (
-          <button
-            type="button"
-            onClick={() => onAddTests(visit)}
-            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition shadow-sm bg-teal-600 text-white hover:bg-teal-700"
-          >
-            <TestTubeIcon /> Add Tests
-          </button>
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
+            ✓ Paid
+          </span>
         )}
       </td>
     </tr>
@@ -151,7 +134,6 @@ export default function BillingDashboard() {
   const [loading, setLoading]     = useState(true);
   const [err, setErr]             = useState('');
   const [consultationVisit, setConsultationVisit] = useState(null);
-  const [testsVisit, setTestsVisit] = useState(null);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -159,11 +141,10 @@ export default function BillingDashboard() {
     try {
       const { data: vData } = await listVisits({ date, limit: 100 });
       const allVisits = vData.data.visits;
-      const filtered  = allVisits.filter((v) => ['DONE', 'TRANSFERRED'].includes(v.queueStatus));
-      setVisits(filtered);
+      setVisits(allVisits);
 
       const map = {};
-      for (const v of filtered) {
+      for (const v of allVisits) {
         map[v.id] = {
           consultation: v.invoices?.find((i) => i.invoiceType === 'CONSULTATION') ?? null,
           services:     v.invoices?.filter((i) => i.invoiceType === 'SERVICES') ?? [],
@@ -291,7 +272,6 @@ export default function BillingDashboard() {
                         visit={v}
                         invoiceData={invoiceMap[v.id]}
                         onPayConsultation={setConsultationVisit}
-                        onAddTests={setTestsVisit}
                       />
                     ))}
                   </tbody>
@@ -308,16 +288,6 @@ export default function BillingDashboard() {
         visit={consultationVisit}
         onClose={(refreshed) => {
           setConsultationVisit(null);
-          if (refreshed) load(true);
-        }}
-      />
-
-      {/* ── Phase 2: Tests billing modal ── */}
-      <TestsBillingModal
-        open={!!testsVisit}
-        visit={testsVisit}
-        onClose={(refreshed) => {
-          setTestsVisit(null);
           if (refreshed) load(true);
         }}
       />
@@ -363,10 +333,3 @@ function EmptyBillingIcon() {
   );
 }
 
-function TestTubeIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M5 2h6M6 2v7l-2.5 4.5a1 1 0 0 0 .9 1.5h7.2a1 1 0 0 0 .9-1.5L10 9V2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
