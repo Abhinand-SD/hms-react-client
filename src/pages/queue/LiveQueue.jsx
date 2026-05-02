@@ -195,8 +195,6 @@ function VisitCard({ visit, userRole, onStatusChange, onVitals, onPayConsultatio
   const { queueStatus: status, patient, doctor } = visit;
   const allowedNext = ROLE_CAN[userRole] ?? [];
 
-  const canStart    = status === 'WAITING'         && allowedNext.includes('IN_CONSULTATION');
-  const canComplete = status === 'IN_CONSULTATION'  && allowedNext.includes('DONE');
   const canVitals   = status === 'WAITING'         && (userRole === 'ADMIN' || userRole === 'RECEPTIONIST');
   const canCancel   = status === 'WAITING'         && allowedNext.includes('CANCELLED');
   const canTransfer = status === 'WAITING'         && allowedNext.includes('TRANSFERRED');
@@ -214,9 +212,6 @@ function VisitCard({ visit, userRole, onStatusChange, onVitals, onPayConsultatio
   const canAddTests = (status === 'DONE' || status === 'TRANSFERRED')
                       && consultPaid
                       && (userRole === 'ADMIN' || userRole === 'RECEPTIONIST');
-
-  // Guardrail: doctors cannot start a consultation until the consultation invoice is paid.
-  const startBlocked = canStart && userRole === 'DOCTOR' && !consultPaid;
 
   const elapsed = status === 'IN_CONSULTATION'
     ? elapsedStr(visit.updatedAt)
@@ -282,27 +277,6 @@ function VisitCard({ visit, userRole, onStatusChange, onVitals, onPayConsultatio
             <button onClick={() => onVitals(visit)}
               className="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700">
               {(visit.bloodPressure || visit.pulse) ? '✏ Vitals' : '+ Vitals'}
-            </button>
-          )}
-
-          {!busy && canStart && (
-            <button
-              onClick={startBlocked ? undefined : () => onStatusChange(visit.id, 'IN_CONSULTATION')}
-              disabled={startBlocked}
-              title={startBlocked ? 'Awaiting Payment' : undefined}
-              className={`rounded-md px-2.5 py-1 text-xs font-bold shadow-sm transition
-                ${startBlocked
-                  ? 'cursor-not-allowed bg-violet-100 text-violet-300'
-                  : 'bg-violet-600 text-white hover:bg-violet-700'}`}
-            >
-              ▶ Start
-            </button>
-          )}
-
-          {!busy && canComplete && (
-            <button onClick={() => onStatusChange(visit.id, 'DONE')}
-              className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-700">
-              ✓ Done
             </button>
           )}
 

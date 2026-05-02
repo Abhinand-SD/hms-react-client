@@ -16,7 +16,17 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }) {
 
   if (!open) return null;
 
-  const widths = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-lg' };
+  const widths = {
+    sm:  'max-w-sm',
+    md:  'max-w-md',
+    lg:  'max-w-lg',
+    xl:  'max-w-xl',
+    '2xl': 'max-w-2xl',
+    '3xl': 'max-w-3xl',
+    '4xl': 'max-w-4xl',
+    '5xl': 'max-w-5xl',
+    '6xl': 'max-w-6xl',
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -25,7 +35,7 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }) {
         onClick={onClose}
       />
       <div
-        className={`relative w-full ${widths[size]} rounded-xl bg-white shadow-2xl ring-1 ring-slate-900/5`}
+        className={`relative w-full ${widths[size] ?? widths.md} rounded-xl bg-white shadow-2xl ring-1 ring-slate-900/5`}
       >
         <div className="flex items-start justify-between border-b border-slate-100 px-5 py-4">
           <h2 className="text-base font-semibold text-slate-900">{title}</h2>
@@ -40,7 +50,7 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }) {
             </svg>
           </button>
         </div>
-        <div className="px-5 py-4">{children}</div>
+        <div className="max-h-[85vh] overflow-y-auto px-5 py-4">{children}</div>
         {footer && (
           <div className="flex items-center justify-end gap-2 border-t border-slate-100 bg-slate-50/50 px-5 py-3 rounded-b-xl">
             {footer}

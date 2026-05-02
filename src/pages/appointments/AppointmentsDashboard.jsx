@@ -3,7 +3,6 @@ import { useAuth } from '../../lib/auth';
 import { extractError } from '../../lib/api';
 import { api } from '../../lib/api';
 import { listAppointments, updateStatus, cancelAppointment, checkInAppointment } from '../../api/appointments.api';
-import { updatePatient } from '../../api/patients.api';
 import { listVisits, updateQueueStatus } from '../../api/visits.api';
 import { AppShell } from '../../components/AppShell';
 import { Button } from '../../components/Button';
@@ -31,17 +30,14 @@ const TYPE_CFG = {
 // Per-status next actions (backend enforces validity)
 const ACTIONS = {
   SCHEDULED:       [
-    { label: 'Check In',     next: 'CHECKED_IN',  cls: 'text-blue-700 hover:bg-blue-50 border-blue-200' },
-    { label: 'Missed',  next: 'NO_SHOW',      cls: 'text-orange-600 hover:bg-orange-50 border-orange-200' },
-    { label: 'Cancel',       next: 'CANCELLED',    cls: 'text-red-600 hover:bg-red-50 border-red-200', needsReason: true },
+    { label: 'Check In', next: 'CHECKED_IN', cls: 'text-blue-700 hover:bg-blue-50 border-blue-200' },
+    { label: 'Missed',   next: 'NO_SHOW',    cls: 'text-orange-600 hover:bg-orange-50 border-orange-200' },
+    { label: 'Cancel',   next: 'CANCELLED',  cls: 'text-red-600 hover:bg-red-50 border-red-200', needsReason: true },
   ],
   CHECKED_IN:      [
-    { label: 'Start Consult', next: 'IN_CONSULTATION', cls: 'text-violet-700 hover:bg-violet-50 border-violet-200' },
-    { label: 'Cancel',        next: 'CANCELLED',         cls: 'text-red-600 hover:bg-red-50 border-red-200', needsReason: true },
+    { label: 'Cancel', next: 'CANCELLED', cls: 'text-red-600 hover:bg-red-50 border-red-200', needsReason: true },
   ],
-  IN_CONSULTATION: [
-    { label: 'Complete', next: 'COMPLETED', cls: 'text-emerald-700 hover:bg-emerald-50 border-emerald-200' },
-  ],
+  IN_CONSULTATION: [],
   COMPLETED: [], NO_SHOW: [], CANCELLED: [],
 };
 
@@ -162,7 +158,7 @@ function CancelModal({ appointment, onClose }) {
 const INP = 'block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20';
 
 function CompleteProfileModal({ appointment, onClose }) {
-  const [form, setForm] = useState({ age: '', gender: 'MALE', city: '' });
+  const [form, setForm] = useState({ age: '', gender: 'MALE', city: '', mobile: '' });
   const [busy, setBusy] = useState(false);
   const [err, setErr]   = useState('');
 
@@ -170,9 +166,10 @@ function CompleteProfileModal({ appointment, onClose }) {
     if (!appointment) return;
     const p = appointment.patient ?? {};
     setForm({
-      age:    p.age     != null ? String(p.age) : '',
-      gender: p.gender  || 'MALE',
-      city:   p.city    || '',
+      age:    p.age    != null ? String(p.age) : '',
+      gender: p.gender || 'MALE',
+      city:   p.city   || '',
+      mobile: p.mobile || '',
     });
     setErr('');
   }, [appointment]);
@@ -184,14 +181,12 @@ function CompleteProfileModal({ appointment, onClose }) {
     setBusy(true);
     setErr('');
     try {
-      // Update patient details first
-      const updates = { gender: form.gender };
-      if (form.age)  updates.age  = parseInt(form.age, 10);
-      if (form.city.trim()) updates.city = form.city.trim();
-      await updatePatient(appointment.patient.id, updates);
+      const patientData = { gender: form.gender };
+      if (form.age)           patientData.age    = parseInt(form.age, 10);
+      if (form.city.trim())   patientData.city   = form.city.trim();
+      if (form.mobile.trim()) patientData.mobile = form.mobile.trim();
 
-      // Then perform check-in
-      const { data } = await checkInAppointment(appointment.id);
+      const { data } = await checkInAppointment(appointment.id, { patientData });
       onClose(true, data.data.visit);
     } catch (e) {
       setErr(extractError(e));
@@ -205,7 +200,7 @@ function CompleteProfileModal({ appointment, onClose }) {
     : '';
 
   return (
-    <Modal open={!!appointment} onClose={() => !busy && onClose(false)} title="Complete Patient Profile" size="sm"
+    <Modal open={!!appointment} onClose={() => !busy && onClose(false)} title="Check-in Details" size="sm"
       footer={
         <>
           <Button variant="secondary" size="md" onClick={() => onClose(false)} disabled={busy}>Cancel</Button>
@@ -221,19 +216,26 @@ function CompleteProfileModal({ appointment, onClose }) {
         <span className="font-semibold text-slate-800">{patName}</span> before checking in.
       </p>
       <div className="space-y-3">
-        <div>
-          <label className="text-xs font-semibold text-slate-600">Gender <span className="text-red-500">*</span></label>
-          <select className={`mt-1.5 ${INP}`} value={form.gender} onChange={(e) => set('gender', e.target.value)}>
-            <option value="MALE">Male</option>
-            <option value="FEMALE">Female</option>
-            <option value="OTHER">Other</option>
-          </select>
-        </div>
         <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-semibold text-slate-600">Gender <span className="text-red-500">*</span></label>
+            <select className={`mt-1.5 ${INP}`} value={form.gender} onChange={(e) => set('gender', e.target.value)}>
+              <option value="MALE">Male</option>
+              <option value="FEMALE">Female</option>
+              <option value="OTHER">Other</option>
+            </select>
+          </div>
           <div>
             <label className="text-xs font-semibold text-slate-600">Age (years)</label>
             <input type="number" min="0" max="150" className={`mt-1.5 ${INP}`} value={form.age}
               onChange={(e) => set('age', e.target.value)} placeholder="35" />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-semibold text-slate-600">Mobile</label>
+            <input type="tel" className={`mt-1.5 ${INP}`} value={form.mobile}
+              onChange={(e) => set('mobile', e.target.value)} placeholder="9876543210" />
           </div>
           <div>
             <label className="text-xs font-semibold text-slate-600">City</label>
@@ -243,8 +245,10 @@ function CompleteProfileModal({ appointment, onClose }) {
         </div>
         {appointment?.opNumber && (
           <div className="flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3.5 py-2.5">
-            <span className="text-xs text-slate-500">OP Number:</span>
-            <span className="font-mono text-sm font-bold text-blue-700">{appointment.opNumber}</span>
+            <span className="text-xs text-slate-500">Token:</span>
+            <span className="font-mono text-sm font-bold text-blue-700">
+              {parseInt(appointment.opNumber.split('-').pop(), 10)}
+            </span>
           </div>
         )}
       </div>
@@ -274,6 +278,11 @@ export default function AppointmentsDashboard() {
   const [checkInTarget, setCheckInTarget] = useState(null); // appointment for CompleteProfileModal
   const [consultationVisit, setConsultationVisit] = useState(null);
   const [doneApptIds, setDoneApptIds] = useState(() => new Set());
+  const [visitsByApptId, setVisitsByApptId] = useState({});
+  const [printTarget, setPrintTarget] = useState(null);
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [allDailyAppts, setAllDailyAppts] = useState([]);
 
   useEffect(() => {
     if (isDoctor) return;
@@ -282,30 +291,51 @@ export default function AppointmentsDashboard() {
       .catch(() => {});
   }, [isDoctor]);
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
   async function load() {
     setLoading(true);
     setErr('');
     try {
-      const apptParams = { date, limit: 100 };
-      if (!isDoctor && doctorFilter) apptParams.doctorId = doctorFilter;
-      if (statusFilter) apptParams.status = statusFilter;
+      const baseParams = { date, limit: 100 };
+      if (!isDoctor && doctorFilter)  baseParams.doctorId = doctorFilter;
+      if (statusFilter)               baseParams.status   = statusFilter;
 
-      const visitParams = { date, queueStatus: 'DONE', limit: 100 };
+      const visitParams = { date, limit: 100 };
       if (!isDoctor && doctorFilter) visitParams.doctorId = doctorFilter;
 
-      const [apptRes, visitsRes] = await Promise.all([
-        listAppointments(apptParams),
-        listVisits(visitParams),
-      ]);
+      const isSearching = !!debouncedSearch.trim();
+      const apptParams  = isSearching
+        ? { ...baseParams, search: debouncedSearch.trim() }
+        : baseParams;
 
-      setAppointments(apptRes.data.data.appointments);
+      // When searching: fetch unfiltered base (for stats) + filtered (for table) in parallel.
+      // When not searching: one call serves both.
+      const fetches = isSearching
+        ? [listAppointments(baseParams), listVisits(visitParams), listAppointments(apptParams)]
+        : [listAppointments(baseParams), listVisits(visitParams)];
 
-      const ids = new Set(
-        (visitsRes.data.data.visits ?? [])
-          .map((v) => v.appointment?.id)
-          .filter(Boolean),
-      );
-      setDoneApptIds(ids);
+      const results       = await Promise.all(fetches);
+      const baseAppts     = results[0].data.data.appointments;
+      const visitList     = results[1].data.data.visits ?? [];
+      const filteredAppts = results[2] ? results[2].data.data.appointments : baseAppts;
+
+      setAllDailyAppts(baseAppts);
+      setAppointments(filteredAppts);
+
+      const vMap  = {};
+      const idSet = new Set();
+      visitList.forEach((v) => {
+        if (v.appointment?.id) {
+          vMap[v.appointment.id] = v;
+          idSet.add(v.appointment.id);
+        }
+      });
+      setVisitsByApptId(vMap);
+      setDoneApptIds(idSet);
     } catch (e) {
       setErr(extractError(e));
     } finally {
@@ -313,7 +343,7 @@ export default function AppointmentsDashboard() {
     }
   }
 
-  useEffect(() => { load(); }, [date, doctorFilter, statusFilter]);
+  useEffect(() => { load(); }, [date, doctorFilter, statusFilter, debouncedSearch]);
 
   async function doStatusUpdate(apptId, nextStatus) {
     setBusy((b) => ({ ...b, [apptId]: true }));
@@ -339,7 +369,7 @@ export default function AppointmentsDashboard() {
     setCheckInTarget(null);
     if (refreshed && visit) {
       setAppointments((prev) =>
-        prev.map((a) => (a.id === apptId ? { ...a, status: 'CHECKED_IN' } : a)),
+        prev.map((a) => (a.id === apptId ? { ...a, status: 'COMPLETED' } : a)),
       );
       setConsultationVisit(visit);
     } else if (refreshed) {
@@ -348,10 +378,10 @@ export default function AppointmentsDashboard() {
   }
 
   const stats = {
-    total:     appointments.length,
-    pending:   appointments.filter((a) => ['SCHEDULED', 'CHECKED_IN', 'IN_CONSULTATION'].includes(a.status)).length,
-    completed: appointments.filter((a) => a.status === 'COMPLETED' || doneApptIds.has(a.id)).length,
-    absent:    appointments.filter((a) => ['CANCELLED', 'NO_SHOW'].includes(a.status)).length,
+    total:     allDailyAppts.length,
+    pending:   allDailyAppts.filter((a) => a.status === 'SCHEDULED').length,
+    completed: allDailyAppts.filter((a) => a.status === 'COMPLETED' || doneApptIds.has(a.id)).length,
+    absent:    allDailyAppts.filter((a) => ['CANCELLED', 'NO_SHOW'].includes(a.status)).length,
   };
 
   const allowedNextStatuses = ROLE_ALLOWED[me?.role] ?? [];
@@ -410,15 +440,35 @@ export default function AppointmentsDashboard() {
 
         <main className="flex-1 overflow-auto px-8 py-6">
 
-          {/* ── Stats strip ── */}
-          {!loading && !err && (
+          {/* ── Stats strip — always visible, never hidden by search or loading ── */}
+          {!err && (
             <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
               <StatCard label="Total"    value={stats.total}     tone="border-slate-200 bg-white text-slate-700"        icon={<CalendarMiniIcon />} />
-              <StatCard label="Pending"  value={stats.pending}   tone="border-blue-200 bg-blue-50 text-blue-800"       icon={<ClockIcon />} />
+              <StatCard label="Balance Check-in"  value={stats.pending}   tone="border-blue-200 bg-blue-50 text-blue-800"       icon={<ClockIcon />} />
               <StatCard label="Completed" value={stats.completed} tone="border-emerald-200 bg-emerald-50 text-emerald-800" icon={<CheckIcon />} />
               <StatCard label="Cancelled / Missed" value={stats.absent} tone="border-slate-200 bg-slate-100 text-slate-600" icon={<XCircleIcon />} />
             </div>
           )}
+
+          {/* ── Search bar ── */}
+          <div className="mb-5 relative">
+            <div className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center">
+              <SearchIcon />
+            </div>
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by patient name, mobile number, or UHID…"
+              className="block w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-10 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            />
+            {search && (
+              <button onClick={() => setSearch('')}
+                className="absolute inset-y-0 right-3.5 flex items-center text-slate-400 hover:text-slate-700">
+                <XSmallIcon />
+              </button>
+            )}
+          </div>
 
           {err && (
             <div className="mb-5 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3.5 text-sm font-medium text-red-700">
@@ -533,21 +583,32 @@ export default function AppointmentsDashboard() {
                           <div className="flex items-center justify-end gap-1.5">
                             {rowBusy ? (
                               <SpinnerIcon />
-                            ) : rowActions.length > 0 ? (
-                              rowActions.map((action) => (
-                                <button key={action.next} disabled={rowBusy}
-                                  onClick={() => {
-                                    if (action.needsReason) return setCancelTarget(appt);
-                                    // Check-in: open Complete Profile modal first
-                                    if (action.next === 'CHECKED_IN') return setCheckInTarget(appt);
-                                    doStatusUpdate(appt.id, action.next);
-                                  }}
-                                  className={`rounded-md border px-2.5 py-1 text-xs font-semibold transition focus:outline-none ${action.cls}`}>
-                                  {action.label}
-                                </button>
-                              ))
                             ) : (
-                              <span className="text-[11px] italic text-slate-300">—</span>
+                              <>
+                                {rowActions.map((action) => (
+                                  <button key={action.next} disabled={rowBusy}
+                                    onClick={() => {
+                                      if (action.needsReason) return setCancelTarget(appt);
+                                      // Check-in: open Complete Profile modal first
+                                      if (action.next === 'CHECKED_IN') return setCheckInTarget(appt);
+                                      doStatusUpdate(appt.id, action.next);
+                                    }}
+                                    className={`rounded-md border px-2.5 py-1 text-xs font-semibold transition focus:outline-none ${action.cls}`}>
+                                    {action.label}
+                                  </button>
+                                ))}
+                                {visitsByApptId[appt.id] && appt.status === 'COMPLETED' && (
+                                  <button
+                                    onClick={() => setPrintTarget(visitsByApptId[appt.id])}
+                                    title="Reprint Bill"
+                                    className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700">
+                                    <PrintIcon />
+                                  </button>
+                                )}
+                                {rowActions.length === 0 && !visitsByApptId[appt.id] && (
+                                  <span className="text-[11px] italic text-slate-300">—</span>
+                                )}
+                              </>
                             )}
                           </div>
                         </td>
@@ -603,6 +664,12 @@ export default function AppointmentsDashboard() {
           load();
         }}
       />
+
+      <ConsultationModal
+        open={!!printTarget}
+        visit={printTarget}
+        onClose={() => setPrintTarget(null)}
+      />
     </AppShell>
   );
 }
@@ -632,4 +699,13 @@ function WarnIcon() {
 }
 function SpinnerIcon() {
   return <svg width="16" height="16" viewBox="0 0 16 16" className="animate-spin text-slate-400" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeDasharray="18 20" strokeLinecap="round" /></svg>;
+}
+function PrintIcon() {
+  return <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 5V2.5h8V5" /><rect x="1.5" y="5" width="13" height="7" rx="1.5" /><path d="M4 12.5h8v1H4z" fill="currentColor" stroke="none" /></svg>;
+}
+function SearchIcon() {
+  return <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="text-slate-400"><circle cx="6.5" cy="6.5" r="4.5" /><path d="M10 10l3.5 3.5" strokeLinecap="round" /></svg>;
+}
+function XSmallIcon() {
+  return <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" /></svg>;
 }

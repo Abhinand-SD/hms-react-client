@@ -155,12 +155,12 @@ function TokenGrid({ bookedTokens, selectedToken, onSelect, loading, disabled })
                 disabled={taken || disabled}
                 onClick={() => onSelect(n)}
                 className={[
-                  'rounded py-1.5 text-xs font-bold transition select-none',
+                  'rounded py-2 text-xs font-bold transition select-none',
                   taken
-                    ? 'cursor-not-allowed bg-slate-200 text-slate-400'
+                    ? 'cursor-not-allowed bg-red-500 text-white opacity-80'
                     : selected
                     ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-400 ring-offset-1'
-                    : 'border border-slate-200 bg-white text-slate-700 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 active:scale-95',
+                    : 'bg-green-500 text-white hover:bg-green-600 active:scale-95',
                 ].join(' ')}
               >
                 {n}
@@ -208,8 +208,10 @@ function OpNumberSuccess({ opNumber, patientName, isNew, isFollowUp, fee, onClos
       </div>
 
       <div className="w-full rounded-2xl border-2 border-dashed border-blue-300 bg-blue-50 px-8 py-4">
-        <p className="text-[11px] font-semibold uppercase tracking-widest text-blue-500">OP Number</p>
-        <p className="mt-1 font-mono text-3xl font-black tracking-wider text-blue-700">{opNumber}</p>
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-blue-500">Token Number</p>
+        <p className="mt-1 font-mono text-3xl font-black tracking-wider text-blue-700">
+          {parseInt(opNumber.split('-').pop(), 10)}
+        </p>
         <p className="mt-1 text-[11px] text-slate-400">Share this number with the patient</p>
       </div>
 
@@ -378,7 +380,7 @@ export function BookAppointment({ open, onClose, initialDate = '' }) {
       open={open}
       onClose={() => !busy && onClose(false)}
       title="Book Appointment"
-      size="lg"
+      size="5xl"
       footer={success ? null : (
         <>
           <Button variant="secondary" size="md" type="button" onClick={() => onClose(false)} disabled={busy}>
@@ -408,62 +410,63 @@ export function BookAppointment({ open, onClose, initialDate = '' }) {
             </div>
           )}
 
-          {/* ── Patient (smart autocomplete) ── */}
-          <FF label="Patient" required error={errors.patientName}>
-            <PatientAutocomplete
-              selectedPatient={form.selectedPatient}
-              inputValue={form.patientName}
-              onInputChange={(v) => set('patientName', v)}
-              onSelect={handlePatientSelect}
-              error={errors.patientName}
-            />
-          </FF>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {/* ── Left: All form fields ── */}
+            <div className="space-y-3">
+              <FF label="Patient" required error={errors.patientName}>
+                <PatientAutocomplete
+                  selectedPatient={form.selectedPatient}
+                  inputValue={form.patientName}
+                  onInputChange={(v) => set('patientName', v)}
+                  onSelect={handlePatientSelect}
+                  error={errors.patientName}
+                />
+              </FF>
+              <div className="grid grid-cols-2 gap-3">
+                <FF label="Mobile Number" required error={errors.mobile}>
+                  <input className={INP} value={form.mobile} type="tel"
+                    onChange={(e) => set('mobile', e.target.value)}
+                    placeholder="9876543210" />
+                </FF>
+                <FF label="City / Place">
+                  <input className={INP} value={form.city}
+                    onChange={(e) => set('city', e.target.value)}
+                    placeholder="e.g. Kochi" />
+                </FF>
+              </div>
+              <FF label="Doctor" required error={errors.doctorId}>
+                <select className={INP} value={form.doctorId} onChange={(e) => set('doctorId', e.target.value)}>
+                  <option value="">— Select doctor —</option>
+                  {doctors.map((d) => (
+                    <option key={d.id} value={d.id}>{d.name} · {d.specialization}</option>
+                  ))}
+                </select>
+              </FF>
+              <FF label="Date" required error={errors.appointmentDate}>
+                <input type="date" className={INP} value={form.appointmentDate} min={today()}
+                  onChange={(e) => set('appointmentDate', e.target.value)} />
+              </FF>
+            </div>
 
-          {/* ── Mobile + City ── */}
-          <div className="grid grid-cols-2 gap-3">
-            <FF label="Mobile Number" required error={errors.mobile}>
-              <input className={INP} value={form.mobile} type="tel"
-                onChange={(e) => set('mobile', e.target.value)}
-                placeholder="9876543210" />
-            </FF>
-            <FF label="City / Place">
-              <input className={INP} value={form.city}
-                onChange={(e) => set('city', e.target.value)}
-                placeholder="e.g. Kochi" />
-            </FF>
+            {/* ── Right: Token selection panel ── */}
+            <div className="flex flex-col rounded-xl border-2 border-dashed border-blue-200 bg-blue-50/30 p-4">
+              <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-blue-600">Token Selection</p>
+              <FF
+                label="Select Token"
+                required
+                error={errors.tokenNumber}
+                hint={!tokenGridReady ? 'Select a doctor and date first to see available tokens' : undefined}
+              >
+                <TokenGrid
+                  bookedTokens={bookedTokens}
+                  selectedToken={form.tokenNumber}
+                  onSelect={(n) => set('tokenNumber', n)}
+                  loading={tokensLoading}
+                  disabled={!tokenGridReady}
+                />
+              </FF>
+            </div>
           </div>
-
-          {/* ── Doctor + Date side by side ── */}
-          <div className="grid grid-cols-2 gap-3">
-            <FF label="Doctor" required error={errors.doctorId}>
-              <select className={INP} value={form.doctorId} onChange={(e) => set('doctorId', e.target.value)}>
-                <option value="">— Select doctor —</option>
-                {doctors.map((d) => (
-                  <option key={d.id} value={d.id}>{d.name} · {d.specialization}</option>
-                ))}
-              </select>
-            </FF>
-            <FF label="Date" required error={errors.appointmentDate}>
-              <input type="date" className={INP} value={form.appointmentDate} min={today()}
-                onChange={(e) => set('appointmentDate', e.target.value)} />
-            </FF>
-          </div>
-
-          {/* ── Token grid ── */}
-          <FF
-            label="Select Token"
-            required
-            error={errors.tokenNumber}
-            hint={!tokenGridReady ? 'Select a doctor and date first to see available tokens' : undefined}
-          >
-            <TokenGrid
-              bookedTokens={bookedTokens}
-              selectedToken={form.tokenNumber}
-              onSelect={(n) => set('tokenNumber', n)}
-              loading={tokensLoading}
-              disabled={!tokenGridReady}
-            />
-          </FF>
         </form>
       )}
     </Modal>
