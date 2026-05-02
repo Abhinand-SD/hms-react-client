@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { extractError } from '../../lib/api';
 import { searchPatients } from '../../api/patients.api';
-import { bookAppointment, quickBookAppointment } from '../../api/appointments.api';
+import { bookAppointment, quickBookAppointment, getBookedTokens } from '../../api/appointments.api';
 import { api } from '../../lib/api';
 import { Modal } from '../../components/Modal';
 import { Button } from '../../components/Button';
 
 const INP = 'block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:bg-slate-50 disabled:text-slate-400';
 
+// ─── Field wrapper ────────────────────────────────────────────────────────────
 function FF({ label, required, hint, error, children }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -30,8 +31,8 @@ function FF({ label, required, hint, error, children }) {
 // selected → patientId stays null and the backend will find-or-create on submit.
 
 function PatientAutocomplete({ selectedPatient, inputValue, onInputChange, onSelect, error }) {
-  const [results, setResults] = useState([]);
-  const [open, setOpen]       = useState(false);
+  const [results, setResults]   = useState([]);
+  const [open, setOpen]         = useState(false);
   const [fetching, setFetching] = useState(false);
   const debounceRef = useRef(null);
   const wrapRef     = useRef(null);
@@ -60,19 +61,9 @@ function PatientAutocomplete({ selectedPatient, inputValue, onInputChange, onSel
     }, 250);
   }
 
-  function pick(p) {
-    onSelect(p);
-    setOpen(false);
-    setResults([]);
-  }
+  function pick(p) { onSelect(p); setOpen(false); setResults([]); }
+  function clear()  { onSelect(null); setOpen(false); setResults([]); }
 
-  function clear() {
-    onSelect(null);
-    setOpen(false);
-    setResults([]);
-  }
-
-  // ── Selected chip ──────────────────────────────────────────────────────────
   if (selectedPatient) {
     return (
       <div className={`flex items-center gap-2.5 rounded-lg border px-3.5 py-2.5 ${error ? 'border-red-300 bg-red-50' : 'border-blue-200 bg-blue-50'}`}>
@@ -80,10 +71,10 @@ function PatientAutocomplete({ selectedPatient, inputValue, onInputChange, onSel
           {(selectedPatient.firstName?.[0] ?? '?').toUpperCase()}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold text-slate-900 truncate">
+          <div className="truncate text-sm font-semibold text-slate-900">
             {selectedPatient.firstName}{selectedPatient.lastName ? ` ${selectedPatient.lastName}` : ''}
           </div>
-          <div className="text-[11px] font-mono text-slate-500">
+          <div className="font-mono text-[11px] text-slate-500">
             {selectedPatient.uhid} · {selectedPatient.mobile}
             {selectedPatient.age != null ? ` · ${selectedPatient.age} yrs` : ''}
           </div>
@@ -96,7 +87,6 @@ function PatientAutocomplete({ selectedPatient, inputValue, onInputChange, onSel
     );
   }
 
-  // ── Search input + dropdown ────────────────────────────────────────────────
   return (
     <div ref={wrapRef} className="relative">
       <div className="relative">
@@ -113,7 +103,6 @@ function PatientAutocomplete({ selectedPatient, inputValue, onInputChange, onSel
           </span>
         )}
       </div>
-
       {open && results.length > 0 && (
         <div className="absolute z-30 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
           <div className="border-b border-slate-100 px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">
@@ -126,10 +115,10 @@ function PatientAutocomplete({ selectedPatient, inputValue, onInputChange, onSel
                 {(p.firstName?.[0] ?? '?').toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-semibold text-slate-900 truncate">
+                <div className="truncate text-sm font-semibold text-slate-900">
                   {p.firstName}{p.lastName ? ` ${p.lastName}` : ''}
                 </div>
-                <div className="text-[11px] font-mono text-slate-400">
+                <div className="font-mono text-[11px] text-slate-400">
                   {p.uhid} · {p.mobile}{p.age != null ? ` · ${p.age} yrs` : ''}
                   {p.city ? ` · ${p.city}` : ''}
                 </div>
@@ -143,28 +132,102 @@ function PatientAutocomplete({ selectedPatient, inputValue, onInputChange, onSel
   );
 }
 
+// ─── Token grid ───────────────────────────────────────────────────────────────
+// Renders tokens 1–70. Taken tokens (already booked for this doctor+date) are
+// shown greyed out and disabled. The selected token is highlighted blue.
+
+function TokenGrid({ bookedTokens, selectedToken, onSelect, loading, disabled }) {
+  return (
+    <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-3">
+      {loading ? (
+        <p className="py-4 text-center text-xs text-slate-400">
+          <SpinnerIcon /> Checking availability…
+        </p>
+      ) : (
+        <div className="grid grid-cols-10 gap-1.5">
+          {Array.from({ length: 70 }, (_, i) => i + 1).map((n) => {
+            const taken    = bookedTokens.includes(n);
+            const selected = selectedToken === n;
+            return (
+              <button
+                key={n}
+                type="button"
+                disabled={taken || disabled}
+                onClick={() => onSelect(n)}
+                className={[
+                  'rounded py-1.5 text-xs font-bold transition select-none',
+                  taken
+                    ? 'cursor-not-allowed bg-slate-200 text-slate-400'
+                    : selected
+                    ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-400 ring-offset-1'
+                    : 'border border-slate-200 bg-white text-slate-700 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 active:scale-95',
+                ].join(' ')}
+              >
+                {n}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {!loading && selectedToken && (
+        <p className="mt-2.5 text-center text-xs font-semibold text-blue-600">
+          Token {selectedToken} selected
+        </p>
+      )}
+      {!loading && !disabled && bookedTokens.length > 0 && (
+        <p className="mt-1.5 text-center text-[10px] text-slate-400">
+          {bookedTokens.length} token{bookedTokens.length !== 1 ? 's' : ''} already booked today
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ─── OP Number success overlay ────────────────────────────────────────────────
 
-function OpNumberSuccess({ opNumber, patientName, isNew, onClose }) {
+function OpNumberSuccess({ opNumber, patientName, isNew, isFollowUp, fee, onClose }) {
   return (
     <div className="flex flex-col items-center gap-5 py-4 text-center">
-      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-100">
-        <CheckCircleIcon />
+      <div className={`flex h-16 w-16 items-center justify-center rounded-2xl ${isFollowUp ? 'bg-amber-100' : 'bg-emerald-100'}`}>
+        <CheckCircleIcon color={isFollowUp ? '#d97706' : '#059669'} />
       </div>
+
       <div>
         <p className="text-lg font-bold text-slate-900">Appointment Booked!</p>
         {isNew && (
           <p className="mt-0.5 text-xs font-medium text-amber-600">New patient record created</p>
         )}
+        {isFollowUp && (
+          <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+            Follow-up visit — No charge
+          </span>
+        )}
         <p className="mt-2 text-sm text-slate-500">
           Patient: <span className="font-semibold text-slate-800">{patientName}</span>
         </p>
       </div>
-      <div className="rounded-2xl border-2 border-dashed border-blue-300 bg-blue-50 px-8 py-4">
+
+      <div className="w-full rounded-2xl border-2 border-dashed border-blue-300 bg-blue-50 px-8 py-4">
         <p className="text-[11px] font-semibold uppercase tracking-widest text-blue-500">OP Number</p>
         <p className="mt-1 font-mono text-3xl font-black tracking-wider text-blue-700">{opNumber}</p>
         <p className="mt-1 text-[11px] text-slate-400">Share this number with the patient</p>
       </div>
+
+      {/* Fee summary — zero fee shows "No Payment Required" banner */}
+      {isFollowUp || fee === 0 ? (
+        <div className="flex w-full items-center gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5">
+          <CheckCircleIcon color="#059669" size={16} />
+          <span className="text-sm font-semibold text-emerald-700">No payment required</span>
+        </div>
+      ) : fee != null ? (
+        <div className="flex w-full items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-4 py-2.5">
+          <span className="text-sm text-slate-500">Consultation Fee</span>
+          <span className="font-mono text-sm font-bold text-slate-800">
+            ₹{parseFloat(fee).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+          </span>
+        </div>
+      ) : null}
+
       <button onClick={onClose}
         className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700">
         Done
@@ -176,80 +239,84 @@ function OpNumberSuccess({ opNumber, patientName, isNew, onClose }) {
 // ─── Main modal ───────────────────────────────────────────────────────────────
 
 const EMPTY = {
-  // Patient state
-  selectedPatient: null,  // full patient object when autofilled from search
-  patientName: '',        // typed text (becomes patientName for new-patient path)
-  mobile: '',             // autofills from selectedPatient, stays editable
-  city: '',               // autofills from selectedPatient, stays editable
-  // Visit
-  doctorId: '',
+  selectedPatient: null,
+  patientName:     '',
+  mobile:          '',
+  city:            '',
+  doctorId:        '',
   appointmentDate: '',
-  isFollowUp: false,
-  notes: '',
+  tokenNumber:     null,
 };
 
 export function BookAppointment({ open, onClose, initialDate = '' }) {
-  const [form, setForm]       = useState({ ...EMPTY, appointmentDate: initialDate || today() });
-  const [doctors, setDoctors] = useState([]);
-  const [busy, setBusy]       = useState(false);
-  const [errors, setErrors]   = useState({});
-  const [globalErr, setGlobalErr] = useState('');
-  const [success, setSuccess] = useState(null); // { opNumber, patientName, isNew }
+  const [form, setForm]                   = useState({ ...EMPTY, appointmentDate: initialDate || today() });
+  const [doctors, setDoctors]             = useState([]);
+  const [bookedTokens, setBookedTokens]   = useState([]);
+  const [tokensLoading, setTokensLoading] = useState(false);
+  const [busy, setBusy]                   = useState(false);
+  const [errors, setErrors]               = useState({});
+  const [globalErr, setGlobalErr]         = useState('');
+  const [success, setSuccess]             = useState(null); // { opNumber, patientName, isNew, isFollowUp, fee }
 
+  // Reset form when modal opens
   useEffect(() => {
     if (!open) return;
     setForm({ ...EMPTY, appointmentDate: initialDate || today() });
     setErrors({});
     setGlobalErr('');
     setSuccess(null);
+    setBookedTokens([]);
     api.get('/doctors', { params: { pageSize: 100, isActive: 'true' } })
       .then(({ data }) => setDoctors(data.data.items))
       .catch(() => {});
   }, [open, initialDate]);
+
+  // Fetch booked tokens whenever doctor or date changes
+  useEffect(() => {
+    if (!form.doctorId || !form.appointmentDate) {
+      setBookedTokens([]);
+      return;
+    }
+    let cancelled = false;
+    setTokensLoading(true);
+    // Clear token selection whenever doctor or date changes
+    setForm((f) => ({ ...f, tokenNumber: null }));
+    getBookedTokens({ doctorId: form.doctorId, date: form.appointmentDate })
+      .then(({ data }) => { if (!cancelled) setBookedTokens(data.data.bookedTokens ?? []); })
+      .catch(() => { if (!cancelled) setBookedTokens([]); })
+      .finally(() => { if (!cancelled) setTokensLoading(false); });
+    return () => { cancelled = true; };
+  }, [form.doctorId, form.appointmentDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function set(k, v) {
     setForm((f) => ({ ...f, [k]: v }));
     setErrors((e) => ({ ...e, [k]: '' }));
   }
 
-  // Called when a patient is selected from the autocomplete dropdown
   function handlePatientSelect(p) {
     if (!p) {
-      // Clear selection — reset autofilled fields
       setForm((f) => ({ ...f, selectedPatient: null, patientName: '', mobile: '', city: '' }));
     } else {
-      // Autofill from selected patient
       const displayName = `${p.firstName}${p.lastName ? ` ${p.lastName}` : ''}`;
       setForm((f) => ({
         ...f,
         selectedPatient: p,
         patientName:     displayName,
-        mobile:          p.mobile  || f.mobile,
-        city:            p.city    || f.city,
+        mobile:          p.mobile || f.mobile,
+        city:            p.city   || f.city,
       }));
     }
     setErrors((e) => ({ ...e, patientName: '', mobile: '' }));
   }
 
-  function selectedDoctor() {
-    return doctors.find((d) => d.id === form.doctorId);
-  }
-
-  function previewFee() {
-    const d = selectedDoctor();
-    if (!d) return null;
-    const fee = form.isFollowUp ? d.followUpFee : d.consultationFee;
-    return `₹${parseFloat(fee).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
-  }
-
   function validate() {
     const e = {};
-    if (!form.selectedPatient && !form.patientName.trim()) {
+    if (!form.selectedPatient && !form.patientName.trim())
       e.patientName = 'Enter a patient name or select from search.';
-    }
-    if (!form.mobile.trim()) e.mobile = 'Mobile number is required.';
-    if (!form.doctorId)      e.doctorId = 'Select a doctor.';
-    if (!form.appointmentDate) e.appointmentDate = 'Date is required.';
+    if (!form.mobile.trim())       e.mobile          = 'Mobile number is required.';
+    if (!form.doctorId)            e.doctorId        = 'Select a doctor.';
+    if (!form.appointmentDate)     e.appointmentDate = 'Date is required.';
+    if (!form.tokenNumber)         e.tokenNumber     = 'Select a token number from the grid.';
     return e;
   }
 
@@ -261,37 +328,42 @@ export function BookAppointment({ open, onClose, initialDate = '' }) {
     setBusy(true);
     setGlobalErr('');
     try {
-      let opNumber, patientName, isNew = false;
+      let opNumber, patientName, isNew = false, isFollowUp = false, fee = null;
 
       if (form.selectedPatient) {
-        // ── Existing patient path ──────────────────────────────────────────
+        // ── Existing patient path ──────────────────────────────────────────────
         const { data } = await bookAppointment({
           patientId:       form.selectedPatient.id,
           doctorId:        form.doctorId,
           appointmentDate: form.appointmentDate,
-          isFollowUp:      form.isFollowUp,
-          notes:           form.notes?.trim() || undefined,
+          tokenNumber:     form.tokenNumber,
         });
-        opNumber    = data.data.appointment.opNumber;
+        const appt = data.data.appointment;
+        opNumber    = appt.opNumber;
         patientName = form.patientName;
+        isFollowUp  = appt.isFollowUp;
+        fee         = parseFloat(appt.consultationFee);
       } else {
-        // ── New patient path (find-or-create by mobile) ────────────────────
+        // ── New / find-or-create patient path ─────────────────────────────────
         const { data } = await quickBookAppointment({
           patientName:     form.patientName.trim(),
           mobile:          form.mobile.trim(),
           city:            form.city?.trim() || undefined,
           doctorId:        form.doctorId,
           appointmentDate: form.appointmentDate,
-          isFollowUp:      form.isFollowUp,
+          tokenNumber:     form.tokenNumber,
         });
+        const appt = data.data.appointment;
         opNumber    = data.data.opNumber;
         patientName = data.data.patient?.firstName
           ? `${data.data.patient.firstName}${data.data.patient.lastName ? ` ${data.data.patient.lastName}` : ''}`
           : form.patientName.trim();
-        isNew = data.data.isNewPatient;
+        isNew       = data.data.isNewPatient;
+        isFollowUp  = appt.isFollowUp;
+        fee         = parseFloat(appt.consultationFee);
       }
 
-      setSuccess({ opNumber, patientName, isNew });
+      setSuccess({ opNumber, patientName, isNew, isFollowUp, fee });
     } catch (err) {
       setGlobalErr(extractError(err));
     } finally {
@@ -299,7 +371,7 @@ export function BookAppointment({ open, onClose, initialDate = '' }) {
     }
   }
 
-  const doc = selectedDoctor();
+  const tokenGridReady = !!(form.doctorId && form.appointmentDate);
 
   return (
     <Modal
@@ -324,6 +396,8 @@ export function BookAppointment({ open, onClose, initialDate = '' }) {
           opNumber={success.opNumber}
           patientName={success.patientName}
           isNew={success.isNew}
+          isFollowUp={success.isFollowUp}
+          fee={success.fee}
           onClose={() => onClose(true)}
         />
       ) : (
@@ -345,7 +419,7 @@ export function BookAppointment({ open, onClose, initialDate = '' }) {
             />
           </FF>
 
-          {/* Mobile + City — visible always; autofill from selection */}
+          {/* ── Mobile + City ── */}
           <div className="grid grid-cols-2 gap-3">
             <FF label="Mobile Number" required error={errors.mobile}>
               <input className={INP} value={form.mobile} type="tel"
@@ -359,53 +433,44 @@ export function BookAppointment({ open, onClose, initialDate = '' }) {
             </FF>
           </div>
 
-          {/* ── Doctor ── */}
-          <FF label="Doctor" required error={errors.doctorId}>
-            <select className={INP} value={form.doctorId} onChange={(e) => set('doctorId', e.target.value)}>
-              <option value="">— Select doctor —</option>
-              {doctors.map((d) => (
-                <option key={d.id} value={d.id}>{d.name} · {d.specialization}</option>
-              ))}
-            </select>
-          </FF>
-
-          {/* ── Date ── */}
-          <FF label="Date" required error={errors.appointmentDate}>
-            <input type="date" className={INP} value={form.appointmentDate} min={today()}
-              onChange={(e) => set('appointmentDate', e.target.value)} />
-          </FF>
-
-          {/* ── Follow-up + Fee preview ── */}
-          <div className="flex items-center justify-between gap-4">
-            <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-100 bg-slate-50/60 px-4 py-3 flex-1">
-              <input type="checkbox" checked={form.isFollowUp}
-                onChange={(e) => set('isFollowUp', e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
-              <div>
-                <div className="text-sm font-semibold text-slate-700">Follow-up visit</div>
-                <div className="text-[11px] text-slate-400">Uses follow-up fee</div>
-              </div>
-            </label>
-            {doc && (
-              <div className="shrink-0 text-right">
-                <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Fee</span>
-                <span className="font-mono text-base font-bold text-slate-700">{previewFee()}</span>
-                <span className="block text-[10px] text-slate-400">{form.isFollowUp ? 'follow-up' : 'consultation'}</span>
-              </div>
-            )}
+          {/* ── Doctor + Date side by side ── */}
+          <div className="grid grid-cols-2 gap-3">
+            <FF label="Doctor" required error={errors.doctorId}>
+              <select className={INP} value={form.doctorId} onChange={(e) => set('doctorId', e.target.value)}>
+                <option value="">— Select doctor —</option>
+                {doctors.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name} · {d.specialization}</option>
+                ))}
+              </select>
+            </FF>
+            <FF label="Date" required error={errors.appointmentDate}>
+              <input type="date" className={INP} value={form.appointmentDate} min={today()}
+                onChange={(e) => set('appointmentDate', e.target.value)} />
+            </FF>
           </div>
 
-          {/* ── Notes (for existing patients only makes sense, but available always) ── */}
-          <FF label="Notes">
-            <textarea className={`${INP} resize-none`} rows={2}
-              value={form.notes} onChange={(e) => set('notes', e.target.value)}
-              placeholder="Any relevant notes…" />
+          {/* ── Token grid ── */}
+          <FF
+            label="Select Token"
+            required
+            error={errors.tokenNumber}
+            hint={!tokenGridReady ? 'Select a doctor and date first to see available tokens' : undefined}
+          >
+            <TokenGrid
+              bookedTokens={bookedTokens}
+              selectedToken={form.tokenNumber}
+              onSelect={(n) => set('tokenNumber', n)}
+              loading={tokensLoading}
+              disabled={!tokenGridReady}
+            />
           </FF>
         </form>
       )}
     </Modal>
   );
 }
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function today() {
   return new Date().toISOString().split('T')[0];
@@ -420,6 +485,6 @@ function WarnIcon() {
 function SpinnerIcon() {
   return <svg width="14" height="14" viewBox="0 0 16 16" className="animate-spin" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeDasharray="18 20" strokeLinecap="round" /></svg>;
 }
-function CheckCircleIcon() {
-  return <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><path d="M7 13l3 3 7-7" /></svg>;
+function CheckCircleIcon({ color = '#059669', size = 36 }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><path d="M7 13l3 3 7-7" /></svg>;
 }
