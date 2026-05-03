@@ -10,6 +10,7 @@ import { Modal } from '../../components/Modal';
 import { BookAppointment } from './BookAppointment';
 import { WalkInModal } from './WalkInModal';
 import { ConsultationModal } from '../billing/ConsultationModal';
+import { ComprehensivePatientForm } from '../../components/ComprehensivePatientForm';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -155,10 +156,14 @@ function CancelModal({ appointment, onClose }) {
 
 // ─── Complete Profile modal (shown before check-in for pre-booked patients) ───
 
-const INP = 'block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20';
-
 function CompleteProfileModal({ appointment, onClose }) {
-  const [form, setForm] = useState({ age: '', gender: 'MALE', city: '', mobile: '' });
+  const [form, setForm] = useState({
+    firstName: '', lastName: '',
+    gender: 'MALE', dob: '', age: '',
+    mobile: '', altMobile: '', email: '',
+    address: '', city: '', state: '', pincode: '',
+    emergencyContactName: '', emergencyContactMobile: '',
+  });
   const [busy, setBusy] = useState(false);
   const [err, setErr]   = useState('');
 
@@ -166,15 +171,23 @@ function CompleteProfileModal({ appointment, onClose }) {
     if (!appointment) return;
     const p = appointment.patient ?? {};
     setForm({
-      age:    p.age    != null ? String(p.age) : '',
-      gender: p.gender || 'MALE',
-      city:   p.city   || '',
-      mobile: p.mobile || '',
+      firstName:              p.firstName              || '',
+      lastName:               p.lastName               || '',
+      gender:                 p.gender                 || 'MALE',
+      dob:                    p.dob ? new Date(p.dob).toISOString().split('T')[0] : '',
+      age:                    p.age != null ? String(p.age) : '',
+      mobile:                 p.mobile                 || '',
+      altMobile:              p.altMobile              || '',
+      email:                  p.email                  || '',
+      address:                p.address                || '',
+      city:                   p.city                   || '',
+      state:                  p.state                  || '',
+      pincode:                p.pincode                || '',
+      emergencyContactName:   p.emergencyContactName   || '',
+      emergencyContactMobile: p.emergencyContactMobile || '',
     });
     setErr('');
   }, [appointment]);
-
-  function set(k, v) { setForm((f) => ({ ...f, [k]: v })); }
 
   async function confirm() {
     if (!form.gender) { setErr('Gender is required.'); return; }
@@ -182,9 +195,19 @@ function CompleteProfileModal({ appointment, onClose }) {
     setErr('');
     try {
       const patientData = { gender: form.gender };
-      if (form.age)           patientData.age    = parseInt(form.age, 10);
-      if (form.city.trim())   patientData.city   = form.city.trim();
-      if (form.mobile.trim()) patientData.mobile = form.mobile.trim();
+      if (form.firstName.trim())              patientData.firstName              = form.firstName.trim();
+      if (form.lastName.trim())               patientData.lastName               = form.lastName.trim();
+      if (form.age)                           patientData.age                    = parseInt(form.age, 10);
+      if (form.dob)                           patientData.dob                    = new Date(form.dob);
+      if (form.mobile.trim())                 patientData.mobile                 = form.mobile.trim();
+      if (form.altMobile.trim())              patientData.altMobile              = form.altMobile.trim();
+      if (form.email.trim())                  patientData.email                  = form.email.trim();
+      if (form.address.trim())                patientData.address                = form.address.trim();
+      if (form.city.trim())                   patientData.city                   = form.city.trim();
+      if (form.state.trim())                  patientData.state                  = form.state.trim();
+      if (form.pincode.trim())                patientData.pincode                = form.pincode.trim();
+      if (form.emergencyContactName.trim())   patientData.emergencyContactName   = form.emergencyContactName.trim();
+      if (form.emergencyContactMobile.trim()) patientData.emergencyContactMobile = form.emergencyContactMobile.trim();
 
       const { data } = await checkInAppointment(appointment.id, { patientData });
       onClose(true, data.data.visit);
@@ -200,59 +223,40 @@ function CompleteProfileModal({ appointment, onClose }) {
     : '';
 
   return (
-    <Modal open={!!appointment} onClose={() => !busy && onClose(false)} title="Check-in Details" size="sm"
+    <Modal open={!!appointment} onClose={() => !busy && onClose(false)} title="Complete Check-In" size="4xl"
       footer={
         <>
           <Button variant="secondary" size="md" onClick={() => onClose(false)} disabled={busy}>Cancel</Button>
           <button onClick={confirm} disabled={busy}
             className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60 transition">
-            {busy ? 'Checking in…' : 'Confirm & Check In'}
+            {busy ? <><SpinnerIcon /> Checking in…</> : 'Complete Check-In'}
           </button>
         </>
       }
     >
-      <p className="mb-4 text-sm text-slate-500">
-        Confirm or update details for{' '}
-        <span className="font-semibold text-slate-800">{patName}</span> before checking in.
-      </p>
-      <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs font-semibold text-slate-600">Gender <span className="text-red-500">*</span></label>
-            <select className={`mt-1.5 ${INP}`} value={form.gender} onChange={(e) => set('gender', e.target.value)}>
-              <option value="MALE">Male</option>
-              <option value="FEMALE">Female</option>
-              <option value="OTHER">Other</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-slate-600">Age (years)</label>
-            <input type="number" min="0" max="150" className={`mt-1.5 ${INP}`} value={form.age}
-              onChange={(e) => set('age', e.target.value)} placeholder="35" />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs font-semibold text-slate-600">Mobile</label>
-            <input type="tel" className={`mt-1.5 ${INP}`} value={form.mobile}
-              onChange={(e) => set('mobile', e.target.value)} placeholder="9876543210" />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-slate-600">City</label>
-            <input className={`mt-1.5 ${INP}`} value={form.city}
-              onChange={(e) => set('city', e.target.value)} placeholder="Kochi" />
-          </div>
-        </div>
+      <div className="space-y-2">
+        <p className="px-6 pt-4 text-sm text-slate-500">
+          Review and complete patient details for{' '}
+          <span className="font-semibold text-slate-800">{patName}</span> before checking in.
+        </p>
+
+        <ComprehensivePatientForm
+          formData={form}
+          onChange={(key, value) => setForm((f) => ({ ...f, [key]: value }))}
+          errors={{}}
+        />
+
         {appointment?.opNumber && (
-          <div className="flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3.5 py-2.5">
+          <div className="mx-6 flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3.5 py-2.5">
             <span className="text-xs text-slate-500">Token:</span>
             <span className="font-mono text-sm font-bold text-blue-700">
               {parseInt(appointment.opNumber.split('-').pop(), 10)}
             </span>
           </div>
         )}
+
+        {err && <p className="mx-6 pb-2 text-xs font-medium text-red-600">⚠ {err}</p>}
       </div>
-      {err && <p className="mt-3 text-xs font-medium text-red-600">⚠ {err}</p>}
     </Modal>
   );
 }

@@ -15,6 +15,10 @@ export const generateInvoiceFromVisit = (visitId) =>
 export const checkoutVisit = (visitId, selectedServiceIds = []) =>
   api.post('/invoices/checkout-visit', { visitId, selectedServiceIds });
 
+// External diagnostic billing — creates/re-uses patient and SERVICES invoice in one call
+export const createExternalServicesInvoice = (patientData, selectedServiceIds) =>
+  api.post('/invoices/external-services', { patientData, selectedServiceIds });
+
 export const getInvoiceById = (id) => api.get(`/invoices/${id}`);
 
 export const listInvoices = (params) => api.get('/invoices', { params });

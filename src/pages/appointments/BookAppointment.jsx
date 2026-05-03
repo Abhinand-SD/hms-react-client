@@ -169,11 +169,6 @@ function TokenGrid({ bookedTokens, selectedToken, onSelect, loading, disabled })
           })}
         </div>
       )}
-      {!loading && selectedToken && (
-        <p className="mt-2.5 text-center text-xs font-semibold text-blue-600">
-          Token {selectedToken} selected
-        </p>
-      )}
       {!loading && !disabled && bookedTokens.length > 0 && (
         <p className="mt-1.5 text-center text-[10px] text-slate-400">
           {bookedTokens.length} token{bookedTokens.length !== 1 ? 's' : ''} already booked today
@@ -186,43 +181,41 @@ function TokenGrid({ bookedTokens, selectedToken, onSelect, loading, disabled })
 // ─── OP Number success overlay ────────────────────────────────────────────────
 
 function OpNumberSuccess({ opNumber, patientName, isNew, isFollowUp, fee, onClose }) {
+  const tokenNum = parseInt(opNumber.split('-').pop(), 10);
   return (
-    <div className="flex flex-col items-center gap-5 py-4 text-center">
-      <div className={`flex h-16 w-16 items-center justify-center rounded-2xl ${isFollowUp ? 'bg-amber-100' : 'bg-emerald-100'}`}>
-        <CheckCircleIcon color={isFollowUp ? '#d97706' : '#059669'} />
+    <div className="max-w-sm mx-auto rounded-2xl shadow-2xl bg-white p-8 text-center">
+      <div className="flex justify-center mb-4">
+        <div className={`flex h-16 w-16 items-center justify-center rounded-full ${isFollowUp ? 'bg-amber-100' : 'bg-emerald-100'}`}>
+          <CheckCircleIcon color={isFollowUp ? '#d97706' : '#059669'} size={40} />
+        </div>
       </div>
 
-      <div>
-        <p className="text-lg font-bold text-slate-900">Appointment Booked!</p>
-        {isNew && (
-          <p className="mt-0.5 text-xs font-medium text-amber-600">New patient record created</p>
-        )}
-        {isFollowUp && (
-          <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
-            Follow-up visit — No charge
-          </span>
-        )}
-        <p className="mt-2 text-sm text-slate-500">
-          Patient: <span className="font-semibold text-slate-800">{patientName}</span>
-        </p>
+      <p className="text-xl font-bold text-slate-900">Appointment Booked!</p>
+      {isNew && (
+        <p className="mt-1 text-xs font-medium text-amber-600">New patient record created</p>
+      )}
+      {isFollowUp && (
+        <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+          Follow-up visit — No charge
+        </span>
+      )}
+      <p className="mt-2 text-sm text-slate-500">
+        Patient: <span className="font-semibold text-slate-800">{patientName}</span>
+      </p>
+
+      <div className="mt-4 rounded-2xl border-2 border-dashed border-blue-200 bg-blue-50 px-8 py-5">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400">Queue Token</p>
+        <p className="text-5xl font-extrabold text-blue-600 mt-1">{tokenNum}</p>
+        <p className="mt-1.5 text-[11px] text-slate-400">Share this number with the patient</p>
       </div>
 
-      <div className="w-full rounded-2xl border-2 border-dashed border-blue-300 bg-blue-50 px-8 py-4">
-        <p className="text-[11px] font-semibold uppercase tracking-widest text-blue-500">Token Number</p>
-        <p className="mt-1 font-mono text-3xl font-black tracking-wider text-blue-700">
-          {parseInt(opNumber.split('-').pop(), 10)}
-        </p>
-        <p className="mt-1 text-[11px] text-slate-400">Share this number with the patient</p>
-      </div>
-
-      {/* Fee summary — zero fee shows "No Payment Required" banner */}
       {isFollowUp || fee === 0 ? (
-        <div className="flex w-full items-center gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5">
+        <div className="mt-4 flex items-center gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5">
           <CheckCircleIcon color="#059669" size={16} />
           <span className="text-sm font-semibold text-emerald-700">No payment required</span>
         </div>
       ) : fee != null ? (
-        <div className="flex w-full items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-4 py-2.5">
+        <div className="mt-4 flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-4 py-2.5">
           <span className="text-sm text-slate-500">Consultation Fee</span>
           <span className="font-mono text-sm font-bold text-slate-800">
             ₹{parseFloat(fee).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
@@ -231,7 +224,7 @@ function OpNumberSuccess({ opNumber, patientName, isNew, isFollowUp, fee, onClos
       ) : null}
 
       <button onClick={onClose}
-        className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700">
+        className="mt-6 w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700">
         Done
       </button>
     </div>
@@ -379,8 +372,9 @@ export function BookAppointment({ open, onClose, initialDate = '' }) {
     <Modal
       open={open}
       onClose={() => !busy && onClose(false)}
-      title="Book Appointment"
-      size="5xl"
+      title={success ? '' : 'Book Appointment'}
+      size={success ? 'sm' : '5xl'}
+      transparent={!!success}
       footer={success ? null : (
         <>
           <Button variant="secondary" size="md" type="button" onClick={() => onClose(false)} disabled={busy}>

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 
-export function Modal({ open, onClose, title, children, footer, size = 'md' }) {
+export function Modal({ open, onClose, title, children, footer, size = 'md', transparent = false }) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e) => {
@@ -34,29 +34,33 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }) {
         className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div
-        className={`relative w-full ${widths[size] ?? widths.md} rounded-xl bg-white shadow-2xl ring-1 ring-slate-900/5`}
-      >
-        <div className="flex items-start justify-between border-b border-slate-100 px-5 py-4">
-          <h2 className="text-base font-semibold text-slate-900">{title}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-            aria-label="Close"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M3 3l10 10M13 3L3 13" />
-            </svg>
-          </button>
+      {transparent ? (
+        <div className={`relative w-full ${widths[size] ?? widths.md}`}>
+          {children}
         </div>
-        <div className="max-h-[85vh] overflow-y-auto px-5 py-4">{children}</div>
-        {footer && (
-          <div className="flex items-center justify-end gap-2 border-t border-slate-100 bg-slate-50/50 px-5 py-3 rounded-b-xl">
-            {footer}
+      ) : (
+        <div className={`relative w-full ${widths[size] ?? widths.md} rounded-xl bg-white shadow-2xl ring-1 ring-slate-900/5`}>
+          <div className="flex items-start justify-between border-b border-slate-100 px-5 py-4">
+            <h2 className="text-base font-semibold text-slate-900">{title}</h2>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              aria-label="Close"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M3 3l10 10M13 3L3 13" />
+              </svg>
+            </button>
           </div>
-        )}
-      </div>
+          <div className="max-h-[85vh] overflow-y-auto px-5 py-4">{children}</div>
+          {footer && (
+            <div className="flex items-center justify-end gap-2 border-t border-slate-100 bg-slate-50/50 px-5 py-3 rounded-b-xl">
+              {footer}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

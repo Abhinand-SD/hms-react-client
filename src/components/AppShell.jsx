@@ -8,7 +8,7 @@ const NAV = [
   { to: '/users', label: 'Users', icon: UsersIcon, roles: ['ADMIN'] },
   { to: '/patients',      label: 'Patients',     icon: PatientIcon,     roles: null },
   { to: '/appointments',  label: 'Appointments', icon: CalendarIcon,    roles: null },
-  { to: '/queue',         label: 'Live Queue',   icon: QueueIcon,       roles: null },
+  // { to: '/queue',         label: 'Live Queue',   icon: QueueIcon,       roles: null },
   { to: '/billing',       label: 'Billing',      icon: BillingIcon,     roles: ['ADMIN', 'RECEPTIONIST'] },
   { to: '/diagnostics',   label: 'Diagnostics',  icon: DiagnosticsIcon, roles: ['ADMIN', 'RECEPTIONIST'] },
   { to: '/reports',       label: 'Reports',      icon: ReportsIcon,     roles: ['ADMIN'] },
