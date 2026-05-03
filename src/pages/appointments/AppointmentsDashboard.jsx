@@ -11,6 +11,7 @@ import { BookAppointment } from './BookAppointment';
 import { WalkInModal } from './WalkInModal';
 import { ConsultationModal } from '../billing/ConsultationModal';
 import { ComprehensivePatientForm } from '../../components/ComprehensivePatientForm';
+import { InvoicePrintView } from '../../components/InvoicePrintView';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -284,6 +285,7 @@ export default function AppointmentsDashboard() {
   const [doneApptIds, setDoneApptIds] = useState(() => new Set());
   const [visitsByApptId, setVisitsByApptId] = useState({});
   const [printTarget, setPrintTarget] = useState(null);
+  const [activePrint, setActivePrint] = useState(null); // { invoice, visit } — singleton print slot
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [allDailyAppts, setAllDailyAppts] = useState([]);
@@ -299,6 +301,21 @@ export default function AppointmentsDashboard() {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(t);
   }, [search]);
+
+  // ── Singleton print: only ever one InvoicePrintView in the DOM at a time ──────
+  function requestPrint(invoice, visit) {
+    setActivePrint({ invoice, visit });
+    // Give React one tick to mount the portal before invoking the browser dialog.
+    setTimeout(() => {
+      window.print();
+      // Clear the portal once the user dismisses the print dialog.
+      const cleanup = () => {
+        setActivePrint(null);
+        window.removeEventListener('afterprint', cleanup);
+      };
+      window.addEventListener('afterprint', cleanup);
+    }, 150);
+  }
 
   async function load() {
     setLoading(true);
@@ -460,7 +477,7 @@ export default function AppointmentsDashboard() {
               <SearchIcon />
             </div>
             <input
-              type="search"
+              type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by patient name, mobile number, or UHID…"
@@ -635,6 +652,7 @@ export default function AppointmentsDashboard() {
 
       <WalkInModal
         open={walkInOpen}
+        onRequestPrint={requestPrint}
         onClose={(refreshed, visit) => {
           setWalkInOpen(false);
           if (refreshed) {
@@ -674,6 +692,10 @@ export default function AppointmentsDashboard() {
         visit={printTarget}
         onClose={() => setPrintTarget(null)}
       />
+      {/* ── Singleton print slot — only one InvoicePrintView ever in the DOM ── */}
+      {activePrint && (
+        <InvoicePrintView invoice={activePrint.invoice} visit={activePrint.visit} />
+      )}
     </AppShell>
   );
 }

@@ -2,15 +2,17 @@ import { useCallback, useEffect, useState } from 'react';
 import { AppShell } from '../../components/AppShell';
 import { extractError } from '../../lib/api';
 import { listVisits } from '../../api/visits.api';
+import { refundInvoice } from '../../api/billing.api';
 import { ConsultationModal } from './ConsultationModal';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
 const INV_STATUS = {
-  PENDING:   { label: 'Pending', cls: 'bg-amber-50 text-amber-700 ring-amber-200' },
-  PARTIAL:   { label: 'Partial', cls: 'bg-blue-50 text-blue-700 ring-blue-200' },
-  PAID:      { label: 'Paid',    cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
-  CANCELLED: { label: 'Void',   cls: 'bg-slate-100 text-slate-500 ring-slate-200' },
+  PENDING:   { label: 'Pending',  cls: 'bg-amber-50 text-amber-700 ring-amber-200' },
+  PARTIAL:   { label: 'Partial',  cls: 'bg-blue-50 text-blue-700 ring-blue-200' },
+  PAID:      { label: 'Paid',     cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
+  CANCELLED: { label: 'Void',     cls: 'bg-slate-100 text-slate-500 ring-slate-200' },
+  REFUNDED:  { label: 'Refunded', cls: 'bg-rose-50 text-rose-700 ring-rose-200' },
 };
 
 const UNBILLED = { label: 'Unbilled', cls: 'bg-rose-50 text-rose-600 ring-rose-200' };
@@ -64,11 +66,82 @@ function InvBadge({ status }) {
   );
 }
 
+// ─── Refund modal ─────────────────────────────────────────────────────────────
+
+function RefundModal({ invoice, onClose }) {
+  const [reason, setReason] = useState('');
+  const [busy, setBusy]     = useState(false);
+  const [err, setErr]       = useState('');
+
+  useEffect(() => { setReason(''); setErr(''); }, [invoice]);
+
+  async function confirm() {
+    if (!reason.trim()) { setErr('Please provide a reason for the refund.'); return; }
+    setBusy(true);
+    try {
+      await refundInvoice(invoice.id, reason.trim());
+      onClose(true);
+    } catch (e) {
+      setErr(extractError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!invoice) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => !busy && onClose(false)} />
+      <div className="relative w-full max-w-sm rounded-xl bg-white shadow-2xl ring-1 ring-slate-900/5">
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+          <h2 className="text-base font-semibold text-slate-900">Refund Invoice</h2>
+          <button onClick={() => !busy && onClose(false)}
+            className="rounded-md p-1 text-slate-400 hover:bg-slate-100">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M3 3l10 10M13 3L3 13" />
+            </svg>
+          </button>
+        </div>
+        <div className="px-5 py-4 space-y-4">
+          <div className="rounded-lg border border-rose-100 bg-rose-50 px-4 py-3">
+            <p className="text-sm font-semibold text-rose-800">{invoice.invoiceNumber}</p>
+            <p className="text-xs text-rose-600 mt-0.5">
+              {fmtCurrency(invoice.netAmount)} · This action cannot be undone.
+            </p>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-slate-600">
+              Reason for Refund <span className="text-red-500">*</span>
+            </label>
+            <textarea rows={3} value={reason}
+              onChange={(e) => { setReason(e.target.value); setErr(''); }}
+              placeholder="e.g. Patient requested cancellation, duplicate charge…"
+              className="block w-full resize-none rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm placeholder:text-slate-400 focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-400/20" />
+            {err && <p className="text-xs font-medium text-red-600">⚠ {err}</p>}
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-slate-100 bg-slate-50/50 px-5 py-3 rounded-b-xl">
+          <button onClick={() => onClose(false)} disabled={busy}
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+            Cancel
+          </button>
+          <button onClick={confirm} disabled={busy}
+            className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60 transition">
+            {busy ? 'Processing…' : 'Confirm Refund'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Table row ────────────────────────────────────────────────────────────────
 
-function VisitRow({ visit, invoiceData, onPayConsultation }) {
+function VisitRow({ visit, invoiceData, onPayConsultation, onRefund }) {
   const consultation = invoiceData?.consultation ?? null;
   const consultPaid  = consultation?.paymentStatus === 'PAID';
+  const isRefunded   = consultation?.paymentStatus === 'REFUNDED';
 
   const totalAmount = invoiceData
     ? Number(consultation?.netAmount ?? 0)
@@ -102,7 +175,11 @@ function VisitRow({ visit, invoiceData, onPayConsultation }) {
         <InvBadge status={overallStatus} />
       </td>
       <td className="whitespace-nowrap px-4 py-3 text-right">
-        {!consultation || !consultPaid ? (
+        {isRefunded ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-inset ring-rose-200">
+            ↩ Refunded
+          </span>
+        ) : !consultation || !consultPaid ? (
           <button
             type="button"
             onClick={() => onPayConsultation(visit)}
@@ -116,9 +193,18 @@ function VisitRow({ visit, invoiceData, onPayConsultation }) {
             {!consultation ? 'Pay Consultation' : 'Complete Payment'}
           </button>
         ) : (
-          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
-            ✓ Paid
-          </span>
+          <div className="flex items-center justify-end gap-2">
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
+              ✓ Paid
+            </span>
+            <button
+              type="button"
+              onClick={() => onRefund(consultation)}
+              className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-100"
+            >
+              <RefundIcon /> Refund
+            </button>
+          </div>
         )}
       </td>
     </tr>
@@ -134,6 +220,7 @@ export default function BillingDashboard() {
   const [loading, setLoading]     = useState(true);
   const [err, setErr]             = useState('');
   const [consultationVisit, setConsultationVisit] = useState(null);
+  const [refundTarget, setRefundTarget]           = useState(null); // invoice object
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -272,6 +359,7 @@ export default function BillingDashboard() {
                         visit={v}
                         invoiceData={invoiceMap[v.id]}
                         onPayConsultation={setConsultationVisit}
+                        onRefund={setRefundTarget}
                       />
                     ))}
                   </tbody>
@@ -292,11 +380,29 @@ export default function BillingDashboard() {
         }}
       />
 
+      {/* ── Refund modal ── */}
+      <RefundModal
+        invoice={refundTarget}
+        onClose={(refreshed) => {
+          setRefundTarget(null);
+          if (refreshed) load(true);
+        }}
+      />
+
     </AppShell>
   );
 }
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
+
+function RefundIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M2 8a6 6 0 1 0 1.5-4" strokeLinecap="round" />
+      <path d="M2 4v4h4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
 function CashRegisterIcon() {
   return (

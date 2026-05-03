@@ -28,7 +28,19 @@ const STATUS_PILL = {
   PARTIAL:   'bg-blue-50 text-blue-700 ring-blue-200',
   PAID:      'bg-emerald-50 text-emerald-700 ring-emerald-200',
   CANCELLED: 'bg-slate-100 text-slate-500 ring-slate-200',
+  REFUNDED:  'bg-rose-50 text-rose-700 ring-rose-200',
 };
+
+// ─── Financial metric card ─────────────────────────────────────────────────────
+function FinCard({ label, value, sub, accent }) {
+  return (
+    <div className={`rounded-2xl border p-4 ${accent}`}>
+      <p className="text-xs font-semibold uppercase tracking-widest opacity-70">{label}</p>
+      <p className="mt-1 text-2xl font-extrabold tabular-nums">{value}</p>
+      {sub && <p className="mt-0.5 text-[11px] opacity-60">{sub}</p>}
+    </div>
+  );
+}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -88,6 +100,41 @@ export default function ReceptionistDashboard() {
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
               {err}
             </div>
+          )}
+
+          {/* ── Financial metrics ── */}
+          {data?.financials && (
+            <section>
+              <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-widest text-slate-500">
+                Today's Financial Summary
+              </h2>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <FinCard
+                  label="Total Bills Today"
+                  value={String(data.financials.totalBilledCount)}
+                  sub="paid invoices"
+                  accent="border-blue-200 bg-blue-50 text-blue-900"
+                />
+                <FinCard
+                  label="Cash Collected"
+                  value={fmtINR(data.financials.cashAmount)}
+                  sub="cash payments"
+                  accent="border-emerald-200 bg-emerald-50 text-emerald-900"
+                />
+                <FinCard
+                  label="Online Collected"
+                  value={fmtINR(data.financials.onlineAmount)}
+                  sub="card / UPI / online"
+                  accent="border-violet-200 bg-violet-50 text-violet-900"
+                />
+                <FinCard
+                  label="Total Revenue"
+                  value={fmtINR(data.financials.totalCollected)}
+                  sub="all methods"
+                  accent="border-slate-300 bg-slate-100 text-slate-900"
+                />
+              </div>
+            </section>
           )}
 
           {/* Middle: Quick actions */}

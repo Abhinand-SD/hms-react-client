@@ -19,6 +19,9 @@ export const checkoutVisit = (visitId, selectedServiceIds = []) =>
 export const createExternalServicesInvoice = (patientData, selectedServiceIds) =>
   api.post('/invoices/external-services', { patientData, selectedServiceIds });
 
+export const refundInvoice = (id, refundReason) =>
+  api.post(`/invoices/${id}/refund`, { refundReason });
+
 export const getInvoiceById = (id) => api.get(`/invoices/${id}`);
 
 export const listInvoices = (params) => api.get('/invoices', { params });

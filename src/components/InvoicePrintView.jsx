@@ -1,8 +1,5 @@
 import { createPortal } from 'react-dom';
-import khcLogo from '../assets/KHC-logo.svg';
-
-const HOSPITAL_NAME  = 'Karunya Hrudayalaya Cardiac Center';
-const HOSPITAL_ADDR  = 'Cardiac Care, Excellence in Every Beat';
+import { useAuth } from '../lib/auth';
 
 function fmtCurrency(val) {
   const n = Number(val);
@@ -22,9 +19,11 @@ const INVOICE_TITLES = {
 };
 
 export function InvoicePrintView({ invoice, visit }) {
+  const { user } = useAuth();
+
   if (!invoice) return null;
 
-  const invoiceType = invoice.invoiceType ?? 'CONSULTATION';
+  const invoiceType  = invoice.invoiceType ?? 'CONSULTATION';
   const receiptTitle = INVOICE_TITLES[invoiceType] ?? 'OPD Receipt';
 
   const patientName = visit?.patient
@@ -34,88 +33,114 @@ export function InvoicePrintView({ invoice, visit }) {
   const uhid     = visit?.patient?.uhid ?? invoice.patient?.uhid ?? '—';
   const opNumber = visit?.opNumber ?? invoice.visit?.opNumber ?? '—';
 
+  // Extract the numeric queue token from the OP number.
+  // Format: "DR01-20260503-042" → split on '-', take last segment "042",
+  // parse as integer to strip leading zeros → 42.
+  const tokenNumber = opNumber !== '—'
+    ? parseInt(opNumber.split('-').pop(), 10)
+    : null;
+
+  const billedBy = user?.fullName ?? user?.username ?? '—';
+
   const content = (
     <div className="invoice-print-root" style={{ display: 'none' }}>
       <style>{`
+        /* ── Page setup: A5 Landscape, blank top for pre-printed letterhead ── */
         @media print {
-          @page { size: A5; margin: 10mm; }
+          @page {
+            size: A5 landscape;
+            margin: 0;
+          }
+          body {
+            margin: 0;
+            padding: 0;
+          }
           body > * { display: none !important; }
           .invoice-print-root {
             display: block !important;
             font-family: Arial, Helvetica, system-ui, -apple-system, "Segoe UI", sans-serif;
             color: #111;
-            font-size: 11pt;
+            font-size: 10pt;
+            /* Padding on the container, not body, so it travels with the element */
+            padding-top: 3.5cm;
+            padding-left: 1cm;
+            padding-right: 1cm;
+            padding-bottom: 1cm;
           }
           .no-print { display: none !important; }
         }
+
+        /* ── Base styles ─────────────────────────────────────────────────── */
         .invoice-print-root {
-          width: 148mm;
-          padding: 0;
+          width: 210mm;
           font-family: Arial, Helvetica, system-ui, -apple-system, "Segoe UI", sans-serif;
         }
-        .inv-header {
-          text-align: center;
-          border-bottom: 2px solid #1a1a2e;
-          padding-bottom: 8px;
-          margin-bottom: 10px;
+
+        /* ── Receipt title bar ───────────────────────────────────────────── */
+        .inv-title-bar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          background: #1a1a2e;
+          color: white;
+          padding: 5px 10px;
+          border-radius: 4px;
+          margin-bottom: 8px;
         }
-        .inv-logo {
-          display: block;
-          margin: 0 auto 6px;
-          width: 60mm;
-          max-width: 80%;
-          height: auto;
-        }
-        .inv-hospital-name {
-          font-size: 14pt;
+        .inv-title-text {
+          font-size: 9pt;
           font-weight: bold;
-          color: #1a1a2e;
-          letter-spacing: 0.5px;
-          margin: 0;
-        }
-        .inv-hospital-sub {
-          font-size: 8pt;
-          color: #555;
-          margin: 2px 0 0;
-          font-style: italic;
-        }
-        .inv-title {
-          font-size: 10pt;
-          font-weight: bold;
-          text-align: center;
-          letter-spacing: 1.5px;
           text-transform: uppercase;
-          margin: 8px 0;
-          color: #1a1a2e;
+          letter-spacing: 1.2px;
         }
-        .inv-meta {
+        .inv-title-meta {
+          font-size: 7.5pt;
+          opacity: 0.85;
+          text-align: right;
+        }
+
+        /* ── Patient + token band ────────────────────────────────────────── */
+        .inv-patient-band {
           display: flex;
           justify-content: space-between;
-          font-size: 8.5pt;
-          border: 1px solid #ddd;
+          align-items: center;
+          background: #f4f7ff;
+          border: 1px solid #dde4f5;
           border-radius: 4px;
-          padding: 6px 10px;
-          background: #f9f9f9;
-          margin-bottom: 10px;
+          padding: 8px 12px;
+          margin-bottom: 8px;
         }
-        .inv-meta-col { display: flex; flex-direction: column; gap: 2px; }
-        .inv-meta-label { color: #666; font-size: 7.5pt; }
-        .inv-meta-val { font-weight: bold; }
+        .inv-band-left { display: flex; flex-direction: column; gap: 3px; }
+        .inv-band-row  { display: flex; flex-direction: column; }
+        .inv-band-label { color: #777; font-size: 7pt; text-transform: uppercase; letter-spacing: 0.5px; }
+        .inv-band-val   { font-weight: bold; color: #1a1a2e; font-size: 9pt; margin-top: 1px; }
+        .inv-band-right { text-align: right; }
+        .inv-token-lbl  { color: #777; font-size: 7pt; text-transform: uppercase; letter-spacing: 0.5px; }
+        .inv-token-num  {
+          font-size: 34pt;
+          font-weight: 900;
+          color: #1a1a2e;
+          line-height: 1;
+          margin-top: 2px;
+        }
+
+        /* ── Line items table ────────────────────────────────────────────── */
         .inv-table {
           width: 100%;
           border-collapse: collapse;
-          font-size: 9pt;
-          margin-bottom: 8px;
+          font-size: 8.5pt;
+          margin-bottom: 6px;
         }
         .inv-table th {
-          background: #1a1a2e;
-          color: white;
+          background: #f0f2f8;
+          color: #1a1a2e;
           padding: 5px 8px;
           text-align: left;
-          font-size: 8pt;
+          font-size: 7.5pt;
           font-weight: bold;
           text-transform: uppercase;
           letter-spacing: 0.5px;
+          border-bottom: 1.5px solid #1a1a2e;
         }
         .inv-table th:last-child { text-align: right; }
         .inv-table td {
@@ -125,75 +150,103 @@ export function InvoicePrintView({ invoice, visit }) {
         }
         .inv-table td:last-child { text-align: right; font-weight: 600; }
         .inv-table tr:last-child td { border-bottom: none; }
-        .inv-total-row {
+
+        /* ── Totals + status row ─────────────────────────────────────────── */
+        .inv-bottom-row {
+          display: flex;
+          align-items: flex-end;
+          justify-content: space-between;
+          margin-top: 4px;
+        }
+        .inv-payments { font-size: 7.5pt; color: #555; flex: 1; }
+        .inv-payments p { margin: 1px 0; }
+        .inv-totals { text-align: right; }
+        .inv-total-line {
           display: flex;
           justify-content: space-between;
-          align-items: center;
+          gap: 24px;
+          padding: 6px 8px 4px;
           border-top: 2px solid #1a1a2e;
-          padding: 8px 8px 4px;
           font-size: 11pt;
           font-weight: bold;
+          color: #1a1a2e;
         }
-        .inv-total-label { color: #1a1a2e; }
-        .inv-total-amt { font-size: 13pt; color: #1a1a2e; }
+        .inv-status-wrap { text-align: right; margin-top: 4px; }
         .inv-status {
-          text-align: center;
-          font-size: 8pt;
-          color: #059669;
+          font-size: 7.5pt;
           font-weight: bold;
           letter-spacing: 1px;
           text-transform: uppercase;
-          border: 1.5px solid #059669;
           border-radius: 20px;
           display: inline-block;
-          padding: 2px 14px;
-          margin: 4px auto 10px;
+          padding: 2px 12px;
         }
-        .inv-status-wrap { text-align: center; }
+        .inv-status-paid     { color: #059669; border: 1.5px solid #059669; }
+        .inv-status-pending  { color: #d97706; border: 1.5px solid #d97706; }
+        .inv-status-partial  { color: #2563eb; border: 1.5px solid #2563eb; }
+        .inv-status-refunded { color: #dc2626; border: 1.5px solid #dc2626; }
+
+        /* ── Footer ──────────────────────────────────────────────────────── */
         .inv-footer {
-          margin-top: 16px;
           display: flex;
           justify-content: space-between;
-          align-items: flex-end;
-          font-size: 8pt;
+          align-items: center;
+          margin-top: 10px;
+          border-top: 1px solid #ddd;
+          padding-top: 6px;
+          font-size: 7.5pt;
+          color: #666;
         }
-        .inv-footer-note { color: #666; font-style: italic; max-width: 55%; }
-        .inv-sig { text-align: right; }
-        .inv-sig-line {
-          border-top: 1px solid #333;
-          width: 100px;
-          margin: 0 0 3px auto;
+        .inv-thank {
+          text-align: center;
+          font-size: 7pt;
+          color: #aaa;
+          margin-top: 6px;
+          font-style: italic;
         }
-        .inv-sig-label { font-size: 7.5pt; color: #555; }
-        .inv-thank { text-align: center; font-size: 7.5pt; color: #888; margin-top: 10px; font-style: italic; }
       `}</style>
 
-      {/* Header */}
-      <div className="inv-header">
-        <img src={khcLogo} alt={HOSPITAL_NAME} className="inv-logo" />
-        <p className="inv-hospital-name">{HOSPITAL_NAME}</p>
-        <p className="inv-hospital-sub">{HOSPITAL_ADDR}</p>
+      {/* ── Receipt title + invoice number + date ── */}
+      <div className="inv-title-bar">
+        <span className="inv-title-text">{receiptTitle}</span>
+        <span className="inv-title-meta">
+          {invoice.invoiceNumber} &nbsp;·&nbsp;{' '}
+          {fmtDate(invoice.invoiceDate?.split?.('T')[0] ?? invoice.invoiceDate)}
+        </span>
       </div>
 
-      <p className="inv-title">{receiptTitle}</p>
+      {/* ── Patient details (left) + large queue token (right) ── */}
+      <div className="inv-patient-band">
+        <div className="inv-band-left">
+          <div className="inv-band-row">
+            <span className="inv-band-label">Patient</span>
+            <span className="inv-band-val">{patientName}</span>
+          </div>
+          <div className="inv-band-row">
+            <span className="inv-band-label">UHID</span>
+            <span className="inv-band-val">{uhid}</span>
+          </div>
+          <div className="inv-band-row">
+            <span className="inv-band-label">OP Number</span>
+            <span className="inv-band-val">{opNumber}</span>
+          </div>
+          {(invoice.visit?.doctor?.name) && (
+            <div className="inv-band-row">
+              <span className="inv-band-label">Doctor</span>
+              <span className="inv-band-val">{invoice.visit.doctor.name}</span>
+            </div>
+          )}
+        </div>
 
-      {/* Invoice meta */}
-      <div className="inv-meta">
-        <div className="inv-meta-col">
-          <span className="inv-meta-label">Invoice No.</span>
-          <span className="inv-meta-val">{invoice.invoiceNumber}</span>
-          <span className="inv-meta-label" style={{ marginTop: '4px' }}>Date</span>
-          <span className="inv-meta-val">{fmtDate(invoice.invoiceDate?.split?.('T')[0] ?? invoice.invoiceDate)}</span>
-        </div>
-        <div className="inv-meta-col" style={{ textAlign: 'right' }}>
-          <span className="inv-meta-label">Patient</span>
-          <span className="inv-meta-val">{patientName}</span>
-          <span className="inv-meta-label" style={{ marginTop: '4px' }}>UHID · OP#</span>
-          <span className="inv-meta-val">{uhid} · {opNumber}</span>
-        </div>
+        {tokenNumber !== null && (
+          <div className="inv-band-right">
+            <div className="inv-token-lbl">Queue Token</div>
+            <div className="inv-token-num">{tokenNumber}</div>
+          </div>
+        )}
       </div>
 
-      {/* Line items */}
+      {/* ── Line items ── */}
       <table className="inv-table">
         <thead>
           <tr>
@@ -205,7 +258,7 @@ export function InvoicePrintView({ invoice, visit }) {
         <tbody>
           {invoice.items.map((item, idx) => (
             <tr key={item.id ?? idx}>
-              <td style={{ color: '#888' }}>{idx + 1}</td>
+              <td style={{ color: '#999' }}>{idx + 1}</td>
               <td>{item.description}</td>
               <td>{fmtCurrency(item.amount)}</td>
             </tr>
@@ -220,44 +273,48 @@ export function InvoicePrintView({ invoice, visit }) {
         </tbody>
       </table>
 
-      {/* Total */}
-      <div className="inv-total-row">
-        <span className="inv-total-label">Total Amount</span>
-        <span className="inv-total-amt">{fmtCurrency(invoice.netAmount)}</span>
-      </div>
-
-      {/* Payment status */}
-      <div className="inv-status-wrap" style={{ marginTop: '6px' }}>
-        <span className="inv-status">
-          {invoice.paymentStatus === 'PAID' ? 'PAID' :
-           invoice.paymentStatus === 'PARTIAL' ? 'PARTIALLY PAID' : 'PENDING'}
-        </span>
-      </div>
-
-      {/* Payments recorded */}
-      {invoice.payments?.length > 0 && (
-        <div style={{ fontSize: '8pt', color: '#444', margin: '4px 8px' }}>
-          {invoice.payments.map((p, i) => (
-            <div key={p.id ?? i} style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>Paid via {p.paymentMode?.name ?? '—'}</span>
-              <span style={{ fontWeight: 600 }}>{fmtCurrency(p.amountPaid)}</span>
-            </div>
+      {/* ── Payments + totals + status ── */}
+      <div className="inv-bottom-row">
+        <div className="inv-payments">
+          {invoice.payments?.length > 0 && invoice.payments.map((p, i) => (
+            <p key={p.id ?? i}>
+              Paid via <strong>{p.paymentMode?.name ?? '—'}</strong>: {fmtCurrency(p.amountPaid)}
+            </p>
           ))}
+          {invoice.refundReason && (
+            <p style={{ color: '#dc2626', marginTop: '4px' }}>
+              Refund reason: {invoice.refundReason}
+            </p>
+          )}
         </div>
-      )}
-
-      {/* Footer */}
-      <div className="inv-footer">
-        <div className="inv-footer-note">
-          This is a computer-generated receipt and does not require a physical signature.
-        </div>
-        <div className="inv-sig">
-          <div className="inv-sig-line" />
-          <div className="inv-sig-label">Authorised Signatory</div>
+        <div className="inv-totals">
+          <div className="inv-total-line">
+            <span>Total Amount</span>
+            <span>{fmtCurrency(invoice.netAmount)}</span>
+          </div>
+          <div className="inv-status-wrap">
+            <span className={`inv-status ${
+              invoice.paymentStatus === 'PAID'     ? 'inv-status-paid'     :
+              invoice.paymentStatus === 'PARTIAL'  ? 'inv-status-partial'  :
+              invoice.paymentStatus === 'REFUNDED' ? 'inv-status-refunded' :
+              'inv-status-pending'
+            }`}>
+              {invoice.paymentStatus === 'PAID'     ? 'PAID'           :
+               invoice.paymentStatus === 'PARTIAL'  ? 'PARTIALLY PAID' :
+               invoice.paymentStatus === 'REFUNDED' ? 'REFUNDED'       :
+               'PENDING'}
+            </span>
+          </div>
         </div>
       </div>
 
-      <p className="inv-thank">Thank you for choosing {HOSPITAL_NAME}</p>
+      {/* ── Footer: billed-by only ── */}
+      <div className="inv-footer">
+        <span>Billed by: <strong>{billedBy}</strong></span>
+        <span>{new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+      </div>
+
+      <p className="inv-thank">Thank you for choosing us. Wishing you a speedy recovery.</p>
     </div>
   );
 

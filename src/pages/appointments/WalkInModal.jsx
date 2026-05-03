@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { extractError } from '../../lib/api';
 import { searchPatients } from '../../api/patients.api';
 import { walkInAppointment, getBookedTokens } from '../../api/appointments.api';
+import { getInvoiceById } from '../../api/billing.api';
 import { api } from '../../lib/api';
 import { Modal } from '../../components/Modal';
 import { Button } from '../../components/Button';
@@ -51,7 +52,7 @@ function TokenGrid({ bookedTokens, selectedToken, onSelect, loading }) {
 }
 
 // ─── Walk-in success — Queue Ticket style ─────────────────────────────────────
-function WalkInSuccess({ opNumber, patientName, isNew, isFollowUp, fee, onDone }) {
+function WalkInSuccess({ opNumber, patientName, isNew, isFollowUp, fee, onDone, onPrint, canPrint }) {
   const tokenNum = parseInt(opNumber.split('-').pop(), 10);
   return (
     <div className="max-w-sm mx-auto rounded-2xl shadow-2xl bg-white p-8 text-center">
@@ -94,10 +95,16 @@ function WalkInSuccess({ opNumber, patientName, isNew, isFollowUp, fee, onDone }
         </div>
       ) : null}
 
-      <button onClick={onDone}
-        className="mt-6 w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700">
-        Done
-      </button>
+      <div className="mt-6 flex gap-3">
+        <button onClick={onPrint} disabled={!canPrint}
+          className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">
+          {canPrint ? <><PrintIcon /> Print Token</> : <><SpinnerIcon /> Loading…</>}
+        </button>
+        <button onClick={onDone}
+          className="flex-1 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700">
+          Done
+        </button>
+      </div>
     </div>
   );
 }
@@ -243,7 +250,7 @@ const EMPTY = {
 
 const INP_SM = 'block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:bg-slate-50 disabled:text-slate-400';
 
-export function WalkInModal({ open, onClose }) {
+export function WalkInModal({ open, onClose, onRequestPrint }) {
   const [form, setForm]                   = useState(EMPTY);
   const [step, setStep]                   = useState(1);
   const [doctors, setDoctors]             = useState([]);
@@ -253,6 +260,7 @@ export function WalkInModal({ open, onClose }) {
   const [errors, setErrors]               = useState({});
   const [globalErr, setGlobalErr]         = useState('');
   const [success, setSuccess]             = useState(null);
+  const [printInvoice, setPrintInvoice]   = useState(null);
 
   useEffect(() => {
     if (!open) return;
@@ -261,6 +269,7 @@ export function WalkInModal({ open, onClose }) {
     setErrors({});
     setGlobalErr('');
     setSuccess(null);
+    setPrintInvoice(null);
     setBookedTokens([]);
     api.get('/doctors', { params: { pageSize: 100, isActive: 'true' } })
       .then(({ data }) => setDoctors(data.data.items))
@@ -365,7 +374,14 @@ export function WalkInModal({ open, onClose }) {
         : patientName;
 
       if (isFollowUp || fee === 0) {
-        setSuccess({ opNumber, patientName: resolvedName, isNew: isNewPatient, isFollowUp, fee, visit: null });
+        setSuccess({ opNumber, patientName: resolvedName, isNew: isNewPatient, isFollowUp, fee, visit });
+        // Fetch the full invoice (with items) so the Print Token button works.
+        const consultInvoice = visit?.invoices?.find((i) => i.invoiceType === 'CONSULTATION');
+        if (consultInvoice?.id) {
+          getInvoiceById(consultInvoice.id)
+            .then(({ data }) => setPrintInvoice(data.data.invoice))
+            .catch(() => {});
+        }
       } else {
         onClose(true, visit);
       }
@@ -417,6 +433,8 @@ export function WalkInModal({ open, onClose }) {
           isFollowUp={success.isFollowUp}
           fee={success.fee}
           onDone={() => onClose(true, null)}
+          onPrint={() => onRequestPrint?.(printInvoice, success.visit)}
+          canPrint={!!printInvoice}
         />
       ) : (
         <form id="walkin-form" onSubmit={onSubmit}>
@@ -534,6 +552,9 @@ function WarnIcon() {
 }
 function SearchIcon() {
   return <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="6.5" cy="6.5" r="4.5" /><path d="M10 10l3.5 3.5" strokeLinecap="round" /></svg>;
+}
+function PrintIcon() {
+  return <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 5V2.5h8V5" /><rect x="1.5" y="5" width="13" height="7" rx="1.5" /><path d="M4 12.5h8v1H4z" fill="currentColor" stroke="none" /></svg>;
 }
 function SpinnerIcon() {
   return <svg width="14" height="14" viewBox="0 0 16 16" className="animate-spin" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeDasharray="18 20" strokeLinecap="round" /></svg>;

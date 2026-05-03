@@ -155,9 +155,10 @@ function ExternalPatientPanel({ onDone }) {
 
   function validateForm() {
     const e = {};
-    if (!patientForm.firstName.trim()) e.firstName = 'First name is required.';
-    if (!patientForm.mobile.trim())    e.mobile    = 'Mobile is required.';
-    if (!patientForm.gender)           e.gender    = 'Select gender.';
+    if (!patientForm.firstName.trim())    e.firstName = 'First name is required.';
+    if (!patientForm.mobile.trim())       e.mobile    = 'Mobile is required.';
+    if (!patientForm.gender)              e.gender    = 'Select gender.';
+    if (!patientForm.age && patientForm.age !== 0) e.age = 'Age is required.';
     return e;
   }
 
@@ -171,7 +172,19 @@ function ExternalPatientPanel({ onDone }) {
     if (selected.size === 0) { setErr('Select at least one test.'); return; }
     setBusy(true); setErr('');
     try {
-      const { data } = await createExternalServicesInvoice(patientForm, [...selected]);
+      // Convert empty strings to null so Zod's email/date validators don't choke.
+      const payload = { ...patientForm };
+      if (payload.email === '')                  payload.email                  = null;
+      if (payload.dob === '')                    payload.dob                    = null;
+      if (payload.altMobile === '')              payload.altMobile              = null;
+      if (payload.address === '')                payload.address                = null;
+      if (payload.city === '')                   payload.city                   = null;
+      if (payload.state === '')                  payload.state                  = null;
+      if (payload.pincode === '')                payload.pincode                = null;
+      if (payload.emergencyContactName === '')   payload.emergencyContactName   = null;
+      if (payload.emergencyContactMobile === '') payload.emergencyContactMobile = null;
+
+      const { data } = await createExternalServicesInvoice(payload, [...selected]);
       setResult(data.data);
       setStep('success');
     } catch (e) {
@@ -279,6 +292,8 @@ function ExternalPatientPanel({ onDone }) {
         onChange={handleChange}
         errors={formErrors}
         autoSearch={true}
+        hideFields={['email', 'dob']}
+        requiredFields={['age']}
         onPatientSelect={(p) => {
           setPatientForm({
             firstName:              p.firstName              || '',

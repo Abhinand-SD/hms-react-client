@@ -164,6 +164,8 @@ export function ComprehensivePatientForm({
   errors = {},
   autoSearch = false,
   onPatientSelect,
+  hideFields = [],
+  requiredFields = [],
 }) {
   function handleDobChange(value) {
     onChange('dob', value);
@@ -206,13 +208,17 @@ export function ComprehensivePatientForm({
                 <GenderToggle value={formData.gender ?? ''} onChange={(v) => onChange('gender', v)} error={errors.gender} />
               </FF>
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <FF label="Date of Birth" error={errors.dob} hint="Age auto-fills on change">
-                <input type="date" className={INP} value={formData.dob ?? ''}
-                  onChange={(e) => handleDobChange(e.target.value)} />
-              </FF>
-              <FF label="Age (years)" error={errors.age}>
-                <input type="number" min="0" max="150" className={INP} value={formData.age ?? ''}
+            <div className={`mt-3 grid gap-3 ${hideFields.includes('dob') ? 'grid-cols-1' : 'grid-cols-2'}`}>
+              {!hideFields.includes('dob') && (
+                <FF label="Date of Birth" error={errors.dob} hint="Age auto-fills on change">
+                  <input type="date" className={INP} value={formData.dob ?? ''}
+                    onChange={(e) => handleDobChange(e.target.value)} />
+                </FF>
+              )}
+              <FF label="Age (years)" required={requiredFields.includes('age')} error={errors.age}>
+                <input type="number" min="0" max="150"
+                  className={`${INP}${errors.age ? ' border-red-300' : ''}`}
+                  value={formData.age ?? ''}
                   onChange={(e) => onChange('age', e.target.value)} placeholder="35" />
               </FF>
             </div>
@@ -221,7 +227,7 @@ export function ComprehensivePatientForm({
           {/* Contact Details */}
           <div>
             <SL icon={<PhoneIcon />} text="Contact Details" />
-            <div className="mt-3 grid grid-cols-3 gap-3">
+            <div className={`mt-3 grid gap-3 ${hideFields.includes('email') ? 'grid-cols-2' : 'grid-cols-3'}`}>
               <FF label="Mobile" required error={errors.mobile}>
                 <input type="tel" className={`${INP}${errors.mobile ? ' border-red-300' : ''}`}
                   value={formData.mobile ?? ''} placeholder="9876543210"
@@ -231,10 +237,12 @@ export function ComprehensivePatientForm({
                 <input type="tel" className={INP} value={formData.altMobile ?? ''} placeholder="9876543211"
                   onChange={(e) => onChange('altMobile', e.target.value)} />
               </FF>
-              <FF label="Email Address" error={errors.email}>
-                <input type="email" className={INP} value={formData.email ?? ''} placeholder="patient@email.com"
-                  onChange={(e) => onChange('email', e.target.value)} autoComplete="email" />
-              </FF>
+              {!hideFields.includes('email') && (
+                <FF label="Email Address" error={errors.email}>
+                  <input type="email" className={INP} value={formData.email ?? ''} placeholder="patient@email.com"
+                    onChange={(e) => onChange('email', e.target.value)} autoComplete="email" />
+                </FF>
+              )}
             </div>
           </div>
 
