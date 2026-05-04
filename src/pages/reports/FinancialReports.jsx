@@ -21,6 +21,9 @@ function fmtINR(n) {
   return `₹${Number(n ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+// All non-cash electronic modes — kept in sync with AdminDashboard bucketise()
+const DIGITAL_CODES = new Set(['CARD', 'POS', 'ONLINE', 'UPI', 'NETBANKING', 'NEFT', 'RTGS', 'IMPS']);
+
 function modeBucket(report, ...codes) {
   if (!report?.byPaymentMode) return 0;
   const set = new Set(codes.map((c) => c.toUpperCase()));
@@ -95,11 +98,17 @@ export default function FinancialReports() {
   const totals = report?.totals ?? { totalRevenue: 0, paymentCount: 0 };
 
   const cashTotal = useMemo(() => modeBucket(report, 'CASH'), [report]);
-  const cardTotal = useMemo(() => modeBucket(report, 'CARD', 'POS'), [report]);
-  const upiTotal  = useMemo(() => modeBucket(report, 'UPI'),  [report]);
+
+  const digitalTotal = useMemo(() => {
+    if (!report?.byPaymentMode) return 0;
+    return report.byPaymentMode
+      .filter((m) => DIGITAL_CODES.has(String(m.code).toUpperCase()))
+      .reduce((s, m) => s + Number(m.total), 0);
+  }, [report]);
+
   const otherTotal = useMemo(() => {
     if (!report?.byPaymentMode) return 0;
-    const known = new Set(['CASH', 'CARD', 'POS', 'UPI']);
+    const known = new Set(['CASH', ...DIGITAL_CODES]);
     return report.byPaymentMode
       .filter((m) => !known.has(String(m.code).toUpperCase()))
       .reduce((s, m) => s + Number(m.total), 0);
@@ -199,11 +208,10 @@ export default function FinancialReports() {
           )}
 
           {/* Summary cards */}
-          <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <section className="grid grid-cols-2 gap-3 md:grid-cols-3">
             <SummaryCard label="Total Revenue" value={fmtINR(totals.totalRevenue)} sub={`${totals.paymentCount} payments`} accent="slate" />
-            <SummaryCard label="Cash" value={fmtINR(cashTotal)} accent="emerald" />
-            <SummaryCard label="Card / POS" value={fmtINR(cardTotal)} accent="blue" />
-            <SummaryCard label="UPI" value={fmtINR(upiTotal)} accent="violet" />
+            <SummaryCard label="Cash"          value={fmtINR(cashTotal)}           accent="emerald" />
+            <SummaryCard label="Digital / POS" value={fmtINR(digitalTotal)}        accent="blue" />
           </section>
 
           {otherTotal > 0 && (
