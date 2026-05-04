@@ -6,6 +6,7 @@ import { listVisits } from '../../api/visits.api';
 import { refundInvoice } from '../../api/billing.api';
 import { ConsultationModal } from './ConsultationModal';
 import { InvoicePrintView } from '../../components/InvoicePrintView';
+import { formatDate } from '../../utils/dateUtils';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -31,11 +32,6 @@ function fmtTime(iso) {
   });
 }
 
-function fmtDateHeader(d) {
-  return new Date(d + 'T00:00:00').toLocaleDateString('en-IN', {
-    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
-  });
-}
 
 function fmtCurrency(amount) {
   return `₹${Number(amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -222,8 +218,9 @@ export default function BillingDashboard() {
   const [loading, setLoading]     = useState(true);
   const [err, setErr]             = useState('');
   const [consultationVisit, setConsultationVisit] = useState(null);
-  const [refundTarget, setRefundTarget]           = useState(null); // invoice object
+  const [refundTarget, setRefundTarget]           = useState(null);
   const [activePrint, setActivePrint]             = useState(null);
+  const [billTypeFilter, setBillTypeFilter]       = useState('all'); // 'all' | 'consultation' | 'diagnostics'
 
   function requestPrint(invoice, visit) {
     setActivePrint({ invoice, visit });
@@ -282,6 +279,15 @@ export default function BillingDashboard() {
     return sum + total;
   }, 0);
 
+  // ── Filtered view ─────────────────────────────────────────────────────────
+
+  const displayedVisits = visits.filter((v) => {
+    const m = invoiceMap[v.id];
+    if (billTypeFilter === 'consultation') return !!m?.consultation;
+    if (billTypeFilter === 'diagnostics')  return (m?.services?.length ?? 0) > 0;
+    return true;
+  });
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -293,7 +299,7 @@ export default function BillingDashboard() {
           <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-3.5">
             <div>
               <h1 className="text-lg font-bold text-slate-900">Billing & Checkout</h1>
-              <p className="mt-0.5 text-xs text-slate-500">{fmtDateHeader(date)}</p>
+              <p className="mt-0.5 text-xs text-slate-500">{formatDate(date)}</p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2.5">
@@ -306,6 +312,17 @@ export default function BillingDashboard() {
                   <Stat value={fmtCurrency(collected)} label="collected" cls="border-slate-200 bg-slate-50 text-slate-700" />
                 </div>
               )}
+
+              {/* Bill type filter */}
+              <select
+                value={billTypeFilter}
+                onChange={(e) => setBillTypeFilter(e.target.value)}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              >
+                <option value="all">All Bills</option>
+                <option value="consultation">Consultation Only</option>
+                <option value="diagnostics">Diagnostics Only</option>
+              </select>
 
               {/* Date picker */}
               <input
@@ -341,7 +358,7 @@ export default function BillingDashboard() {
             <div className="flex flex-1 items-center justify-center">
               <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-slate-200 border-t-blue-600" />
             </div>
-          ) : visits.length === 0 ? (
+          ) : displayedVisits.length === 0 ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-200 text-slate-400">
                 <EmptyBillingIcon />
@@ -368,7 +385,7 @@ export default function BillingDashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {visits.map((v) => (
+                    {displayedVisits.map((v) => (
                       <VisitRow
                         key={v.id}
                         visit={v}

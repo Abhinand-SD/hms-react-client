@@ -5,6 +5,7 @@ import { extractError } from '../../lib/api';
 import { getPatientById, getPatientByUhid, getPatientVisits } from '../../api/patients.api';
 import { AppShell } from '../../components/AppShell';
 import { Button } from '../../components/Button';
+import { formatDate } from '../../utils/dateUtils';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -33,11 +34,6 @@ function avatarGradient(name) {
 }
 
 // ─── Utility ─────────────────────────────────────────────────────────────────
-
-function fmtDate(s) {
-  if (!s) return null;
-  return new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-}
 
 function initials(name) {
   return (name || '?')
@@ -151,7 +147,7 @@ function VisitHistory({ patientId }) {
                   return (
                   <tr key={v.id} className="transition-colors hover:bg-slate-50/60">
                     <td className="px-5 py-3 font-mono text-xs font-semibold text-blue-700">{v.opNumber}</td>
-                    <td className="px-5 py-3 text-slate-700">{fmtDate(v.visitDate) ?? '—'}</td>
+                    <td className="px-5 py-3 text-slate-700">{formatDate(v.visitDate) ?? '—'}</td>
                     <td className="px-5 py-3 font-semibold text-slate-900">{v.doctor?.name ?? '—'}</td>
                     <td className="px-5 py-3 text-slate-500">{v.doctor?.specialization ?? '—'}</td>
                     <td className="px-5 py-3 font-mono text-xs text-slate-500">
@@ -343,7 +339,7 @@ export default function PatientDetail() {
               {/* Demographics */}
               <SectionCard icon={<PersonIcon />} title="Demographics">
                 <dl className="grid grid-cols-2 gap-x-8 gap-y-5 sm:grid-cols-3">
-                  <DetailField label="Date of Birth" value={fmtDate(patient.dob)} />
+                  <DetailField label="Date of Birth" value={formatDate(patient.dob)} />
                   <DetailField label="Age" value={patient.age != null ? `${patient.age} years` : null} />
                   <DetailField label="Gender" value={GENDER_LABEL[patient.gender] || patient.gender} />
                   <DetailField label="Mobile" value={patient.mobile} mono />
@@ -378,7 +374,7 @@ export default function PatientDetail() {
               {/* h-full so this card expands to fill remaining right-column space */}
               <SectionCard icon={<InfoIcon />} title="Registration Info" className="h-full">
                 <dl className="space-y-5">
-                  <DetailField label="Registered On" value={fmtDate(patient.createdAt)} />
+                  <DetailField label="Registered On" value={formatDate(patient.createdAt)} />
                   <DetailField
                     label="Registered By"
                     value={patient.createdBy?.fullName || patient.createdBy?.username}

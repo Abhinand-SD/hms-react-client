@@ -6,15 +6,12 @@ import { searchPatients } from '../../api/patients.api';
 import { AppShell } from '../../components/AppShell';
 import { Button } from '../../components/Button';
 import { Input, Select } from '../../components/Input';
+import { formatDate } from '../../utils/dateUtils';
 
 const PAGE_SIZE = 20;
 
 const GENDER_LABEL = { MALE: 'Male', FEMALE: 'Female', OTHER: 'Other' };
 
-function fmtDate(s) {
-  if (!s) return '—';
-  return new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-}
 
 function SkeletonRow() {
   return (
@@ -215,7 +212,7 @@ export default function PatientsList() {
                     <td className="px-4 py-3 text-slate-700">{p.age ?? '—'}</td>
                     <td className="px-4 py-3 text-slate-600">{GENDER_LABEL[p.gender] || p.gender}</td>
                     <td className="px-4 py-3 text-slate-600">{p.city || '—'}</td>
-                    <td className="px-4 py-3 text-slate-500">{fmtDate(p.createdAt)}</td>
+                    <td className="px-4 py-3 text-slate-500">{formatDate(p.createdAt)}</td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1">
                         <Button

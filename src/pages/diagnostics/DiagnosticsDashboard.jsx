@@ -5,10 +5,11 @@ import { extractError } from '../../lib/api';
 import { api } from '../../lib/api';
 import { listVisits } from '../../api/visits.api';
 import { listServices } from '../../api/services.api';
-import { createExternalServicesInvoice } from '../../api/billing.api';
+import { createExternalServicesInvoice, getInvoiceById, listInvoices } from '../../api/billing.api';
 import { TestsBillingModal } from '../billing/TestsBillingModal';
 import { ComprehensivePatientForm } from '../../components/ComprehensivePatientForm';
 import { InvoicePrintView } from '../../components/InvoicePrintView';
+import { formatDate } from '../../utils/dateUtils';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -16,11 +17,6 @@ function todayStr() {
   return new Date().toISOString().split('T')[0];
 }
 
-function fmtDateHeader(d) {
-  return new Date(d + 'T00:00:00').toLocaleDateString('en-IN', {
-    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
-  });
-}
 
 function fmtCurrency(v) {
   return `₹${Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -134,15 +130,20 @@ const EMPTY_EXT = {
   emergencyContactName: '', emergencyContactMobile: '',
 };
 
-function ExternalPatientPanel({ onDone }) {
+function ExternalPatientPanel({ onSuccess }) {
   const [patientForm, setPatientForm] = useState(EMPTY_EXT);
   const [services, setServices]       = useState([]);
   const [selected, setSelected]       = useState(new Set());
-  const [step, setStep]               = useState('form'); // 'form' | 'tests' | 'success'
+  // steps: 'form' | 'tests' | 'payment' | 'success'
+  const [step, setStep]               = useState('form');
   const [busy, setBusy]               = useState(false);
+  const [payBusy, setPayBusy]         = useState(false);
   const [err, setErr]                 = useState('');
   const [result, setResult]           = useState(null);
   const [formErrors, setFormErrors]   = useState({});
+  const [paymentModes, setPaymentModes] = useState([]);
+  const [cashModeId, setCashModeId]   = useState('');
+  const [cashAmt, setCashAmt]         = useState('');
 
   useEffect(() => {
     listServices({ isActive: 'true' })
@@ -174,7 +175,6 @@ function ExternalPatientPanel({ onDone }) {
     if (selected.size === 0) { setErr('Select at least one test.'); return; }
     setBusy(true); setErr('');
     try {
-      // Convert empty strings to null so Zod's email/date validators don't choke.
       const payload = { ...patientForm };
       if (payload.email === '')                  payload.email                  = null;
       if (payload.dob === '')                    payload.dob                    = null;
@@ -186,13 +186,46 @@ function ExternalPatientPanel({ onDone }) {
       if (payload.emergencyContactName === '')   payload.emergencyContactName   = null;
       if (payload.emergencyContactMobile === '') payload.emergencyContactMobile = null;
 
-      const { data } = await createExternalServicesInvoice(payload, [...selected]);
-      setResult(data.data);
-      setStep('success');
+      const [{ data: invData }, { data: pmData }] = await Promise.all([
+        createExternalServicesInvoice(payload, [...selected]),
+        api.get('/payment-modes', { params: { limit: 100, isActive: 'true' } }),
+      ]);
+
+      const resultData  = invData.data;
+      const modeList    = pmData.data.items ?? [];
+      const cashMode    = modeList.find((m) => (m.type ?? m.name ?? '').toLowerCase().includes('cash'))
+                          ?? modeList[0];
+
+      setResult(resultData);
+      setPaymentModes(modeList);
+      if (cashMode) setCashModeId(cashMode.id);
+      setCashAmt(String(Number(resultData.invoice?.netAmount ?? 0).toFixed(2)));
+      setStep('payment');
     } catch (e) {
       setErr(extractError(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function payCash() {
+    if (!cashModeId) { setErr('No cash payment mode available.'); return; }
+    setPayBusy(true); setErr('');
+    try {
+      await api.post('/payments', {
+        invoiceId:     result.invoice.id,
+        paymentModeId: cashModeId,
+        amountPaid:    Number(cashAmt),
+        paymentDate:   todayStr(),
+      });
+      const { data: refreshed } = await getInvoiceById(result.invoice.id);
+      const paidInvoice = refreshed.data.invoice;
+      setResult((r) => ({ ...r, invoice: paidInvoice }));
+      setStep('success');
+    } catch (e) {
+      setErr(extractError(e));
+    } finally {
+      setPayBusy(false);
     }
   }
 
@@ -207,29 +240,101 @@ function ExternalPatientPanel({ onDone }) {
   const selectedSvcs = services.filter((s) => selected.has(s.id));
   const testsTotal   = selectedSvcs.reduce((sum, s) => sum + Number(s.price), 0);
 
+  // ── Payment step ──────────────────────────────────────────────────────────
+  if (step === 'payment' && result) {
+    const cashModeName = paymentModes.find((m) => m.id === cashModeId)?.name ?? 'Cash';
+    return (
+      <div className="max-w-md mx-auto space-y-4 py-6 px-4">
+        <div className="rounded-xl border border-teal-200 bg-teal-50 p-4">
+          <p className="text-[11px] font-bold uppercase tracking-widest text-teal-600 mb-2">Invoice Summary</p>
+          <p className="font-mono text-sm font-bold text-teal-800">{result.invoice?.invoiceNumber}</p>
+          <p className="text-sm text-slate-700 mt-0.5">
+            {result.invoice?.patient?.firstName} {result.invoice?.patient?.lastName ?? ''}
+          </p>
+          {result.isNewPatient && (
+            <span className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+              New patient record created
+            </span>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 flex items-center justify-between">
+          <span className="text-sm font-bold text-slate-900">Total Due</span>
+          <span className="text-lg font-bold text-teal-700">{fmtCurrency(result.invoice?.netAmount ?? 0)}</span>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-xs font-semibold text-slate-600">
+            Collect ({cashModeName})
+          </label>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={cashAmt}
+            onChange={(e) => setCashAmt(e.target.value)}
+            className="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+          />
+        </div>
+
+        {err && (
+          <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">⚠ {err}</p>
+        )}
+
+        <div className="flex gap-3 pt-1">
+          <button
+            onClick={payCash}
+            disabled={payBusy || !cashAmt || Number(cashAmt) <= 0}
+            className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-teal-700 disabled:opacity-60 disabled:cursor-not-allowed transition"
+          >
+            {payBusy ? 'Recording…' : `Collect & Pay (${fmtCurrency(cashAmt || 0)})`}
+          </button>
+        </div>
+        <button
+          onClick={() => setStep('tests')}
+          className="w-full text-xs font-semibold text-slate-500 hover:text-slate-700 transition"
+        >
+          ← Back to test selection
+        </button>
+      </div>
+    );
+  }
+
+  // ── Success step ──────────────────────────────────────────────────────────
   if (step === 'success' && result) {
     return (
-      <div className="flex flex-col items-center gap-5 py-10 text-center">
+      <div className="flex flex-col items-center gap-5 py-10 text-center px-4">
         <div className="flex h-16 w-16 items-center justify-center rounded-full bg-teal-100 ring-4 ring-teal-50">
           <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
             <path d="M6 16l7 7L26 9" stroke="#0d9488" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </div>
         <div>
-          <p className="text-lg font-bold text-slate-900">Invoice Created!</p>
+          <p className="text-lg font-bold text-slate-900">Payment Recorded!</p>
           {result.isNewPatient && (
             <p className="mt-0.5 text-xs font-medium text-amber-600">New patient record created</p>
           )}
           <p className="mt-1 font-mono text-sm font-semibold text-teal-700">{result.invoice?.invoiceNumber}</p>
           <p className="mt-0.5 text-sm text-slate-500">
             {result.invoice?.patient?.firstName} {result.invoice?.patient?.lastName ?? ''} ·{' '}
-            {fmtCurrency(result.invoice?.netAmount ?? 0)} pending payment
+            {fmtCurrency(result.invoice?.netAmount ?? 0)} collected
           </p>
         </div>
-        <button onClick={onDone}
-          className="rounded-lg bg-teal-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-700">
-          Done
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => onSuccess(result)}
+            className="inline-flex items-center gap-2 rounded-lg bg-teal-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-700"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 5V2.5h8V5" /><rect x="1.5" y="5" width="13" height="7" rx="1.5" /><path d="M4 12.5h8v1H4z" fill="currentColor" stroke="none" /></svg>
+            Print Bill
+          </button>
+          <button
+            onClick={() => { setStep('form'); setPatientForm(EMPTY_EXT); setSelected(new Set()); setResult(null); setErr(''); }}
+            className="rounded-lg border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+          >
+            New Patient
+          </button>
+        </div>
       </div>
     );
   }
@@ -337,6 +442,7 @@ export default function DiagnosticsDashboard() {
   const [search, setSearch] = useState('');
   const [testsVisit, setTestsVisit]   = useState(null);
   const [activePrint, setActivePrint] = useState(null);
+  const [extBills, setExtBills]       = useState([]);  // today's SERVICES invoices
 
   function requestPrint(invoice, visit) {
     setActivePrint({ invoice, visit });
@@ -349,6 +455,13 @@ export default function DiagnosticsDashboard() {
     window.print();
     return () => window.removeEventListener('afterprint', handleAfterPrint);
   }, [activePrint]);
+
+  const loadExtBills = useCallback(async () => {
+    try {
+      const { data } = await listInvoices({ startDate: date, endDate: date, invoiceType: 'SERVICES', limit: 50 });
+      setExtBills(data.data?.invoices ?? []);
+    } catch { /* non-critical */ }
+  }, [date]);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -366,7 +479,7 @@ export default function DiagnosticsDashboard() {
     }
   }, [date]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); loadExtBills(); }, [load, loadExtBills]);
 
   // Client-side filter on patient name, UHID, or OP number
   const q = search.trim().toLowerCase();
@@ -391,7 +504,7 @@ export default function DiagnosticsDashboard() {
           <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-3.5">
             <div>
               <h1 className="text-lg font-bold text-slate-900">Diagnostic Tests</h1>
-              <p className="mt-0.5 text-xs text-slate-500">{fmtDateHeader(date)}</p>
+              <p className="mt-0.5 text-xs text-slate-500">{formatDate(date)}</p>
             </div>
 
             {/* Tab switcher */}
@@ -463,8 +576,70 @@ export default function DiagnosticsDashboard() {
         {/* ── Body ── */}
         <main className="flex flex-1 flex-col overflow-hidden p-5">
           {tab === 'external' && (
-            <div className="flex-1 overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <ExternalPatientPanel onDone={() => setTab('patients')} />
+            <div className="space-y-5 overflow-y-auto flex-1">
+              <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <ExternalPatientPanel
+                  onSuccess={(result) => {
+                    requestPrint(result.invoice, null);
+                    load(true);
+                    loadExtBills();
+                    setTab('patients');
+                  }}
+                />
+              </div>
+
+              {/* ── Recent Diagnostic Bills ── */}
+              <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                <div className="border-b border-slate-100 px-5 py-3 flex items-center justify-between">
+                  <p className="text-sm font-bold text-slate-800">Recent Diagnostic Bills — {formatDate(date)}</p>
+                  <button onClick={loadExtBills} className="text-[11px] font-semibold text-teal-600 hover:text-teal-800 transition">
+                    ↻ Refresh
+                  </button>
+                </div>
+                {extBills.length === 0 ? (
+                  <p className="px-5 py-6 text-sm text-slate-400 text-center">No diagnostic bills for this date yet.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-left text-sm">
+                      <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                        <tr>
+                          {['Invoice #', 'Patient', 'Amount', 'Status', 'Date'].map((h) => (
+                            <th key={h} className="border-b border-slate-200 px-4 py-2.5">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {extBills.map((inv) => (
+                          <tr key={inv.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-4 py-2.5 font-mono text-xs font-bold text-teal-700">{inv.invoiceNumber}</td>
+                            <td className="px-4 py-2.5">
+                              <div className="font-semibold text-slate-800">
+                                {inv.patient?.firstName} {inv.patient?.lastName ?? ''}
+                              </div>
+                              <div className="font-mono text-[11px] text-slate-400">{inv.patient?.uhid}</div>
+                            </td>
+                            <td className="px-4 py-2.5 font-semibold text-slate-800 tabular-nums">
+                              {fmtCurrency(inv.netAmount ?? 0)}
+                            </td>
+                            <td className="px-4 py-2.5">
+                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${
+                                inv.paymentStatus === 'PAID'
+                                  ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+                                  : 'bg-amber-50 text-amber-700 ring-amber-200'
+                              }`}>
+                                {inv.paymentStatus === 'PAID' ? '✓ Paid' : 'Pending'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5 text-slate-500 tabular-nums">
+                              {formatDate(inv.invoiceDate ?? inv.createdAt)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           )}
           {tab === 'patients' && err && (

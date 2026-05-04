@@ -132,9 +132,12 @@ function PatientAutocomplete({ selectedPatient, inputValue, onInputChange, onSel
   );
 }
 
+// ─── VIP slot numbers ─────────────────────────────────────────────────────────
+const VIP_SLOTS = [1, 2, 10, 15, 20];
+
 // ─── Token grid ───────────────────────────────────────────────────────────────
-// Renders tokens 1–70. Taken tokens (already booked for this doctor+date) are
-// shown greyed out and disabled. The selected token is highlighted blue.
+// Renders tokens 1–70. Taken tokens are red/disabled. Selected is blue.
+// VIP slots (available, not selected) are orange.
 
 function TokenGrid({ bookedTokens, selectedToken, onSelect, loading, disabled }) {
   return (
@@ -148,6 +151,7 @@ function TokenGrid({ bookedTokens, selectedToken, onSelect, loading, disabled })
           {Array.from({ length: 70 }, (_, i) => i + 1).map((n) => {
             const taken    = bookedTokens.includes(n);
             const selected = selectedToken === n;
+            const isVip    = VIP_SLOTS.includes(n);
             return (
               <button
                 key={n}
@@ -160,6 +164,8 @@ function TokenGrid({ bookedTokens, selectedToken, onSelect, loading, disabled })
                     ? 'cursor-not-allowed bg-red-500 text-white opacity-80'
                     : selected
                     ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-400 ring-offset-1'
+                    : isVip
+                    ? 'bg-orange-500 hover:bg-orange-600 text-white border border-orange-600 active:scale-95'
                     : 'bg-green-500 text-white hover:bg-green-600 active:scale-95',
                 ].join(' ')}
               >
@@ -169,10 +175,18 @@ function TokenGrid({ bookedTokens, selectedToken, onSelect, loading, disabled })
           })}
         </div>
       )}
-      {!loading && !disabled && bookedTokens.length > 0 && (
-        <p className="mt-1.5 text-center text-[10px] text-slate-400">
-          {bookedTokens.length} token{bookedTokens.length !== 1 ? 's' : ''} already booked today
-        </p>
+      {!loading && !disabled && (
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          {bookedTokens.length > 0 && (
+            <p className="text-[10px] text-slate-400">
+              {bookedTokens.length} token{bookedTokens.length !== 1 ? 's' : ''} already booked today
+            </p>
+          )}
+          <p className="ml-auto text-[10px] text-slate-400">
+            <span className="inline-block h-2 w-2 rounded-sm bg-orange-500 align-middle mr-1" />
+            Orange = VIP Slot
+          </p>
+        </div>
       )}
     </div>
   );

@@ -8,6 +8,9 @@ import { Modal } from '../../components/Modal';
 import { Button } from '../../components/Button';
 import { ComprehensivePatientForm } from '../../components/ComprehensivePatientForm';
 
+// ─── VIP slot numbers ─────────────────────────────────────────────────────────
+const VIP_SLOTS = [1, 2, 10, 15, 20];
+
 // ─── Token grid ───────────────────────────────────────────────────────────────
 function TokenGrid({ bookedTokens, selectedToken, onSelect, loading }) {
   return (
@@ -21,6 +24,7 @@ function TokenGrid({ bookedTokens, selectedToken, onSelect, loading }) {
           {Array.from({ length: 70 }, (_, i) => i + 1).map((n) => {
             const taken    = bookedTokens.includes(n);
             const selected = selectedToken === n;
+            const isVip    = VIP_SLOTS.includes(n);
             return (
               <button
                 key={n}
@@ -33,6 +37,8 @@ function TokenGrid({ bookedTokens, selectedToken, onSelect, loading }) {
                     ? 'cursor-not-allowed bg-red-500 text-white opacity-80'
                     : selected
                     ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-400 ring-offset-1'
+                    : isVip
+                    ? 'bg-orange-500 hover:bg-orange-600 text-white border border-orange-600 active:scale-95'
                     : 'bg-green-500 text-white hover:bg-green-600 active:scale-95',
                 ].join(' ')}
               >
@@ -42,10 +48,18 @@ function TokenGrid({ bookedTokens, selectedToken, onSelect, loading }) {
           })}
         </div>
       )}
-      {!loading && bookedTokens.length > 0 && (
-        <p className="mt-1.5 text-center text-[10px] text-slate-400">
-          {bookedTokens.length} token{bookedTokens.length !== 1 ? 's' : ''} already taken today
-        </p>
+      {!loading && (
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          {bookedTokens.length > 0 && (
+            <p className="text-[10px] text-slate-400">
+              {bookedTokens.length} token{bookedTokens.length !== 1 ? 's' : ''} already taken today
+            </p>
+          )}
+          <p className="ml-auto text-[10px] text-slate-400">
+            <span className="inline-block h-2 w-2 rounded-sm bg-orange-500 align-middle mr-1" />
+            Orange = VIP Slot
+          </p>
+        </div>
       )}
     </div>
   );

@@ -1,17 +1,12 @@
 import { createPortal } from 'react-dom';
 import { useAuth } from '../lib/auth';
+import { formatDate } from '../utils/dateUtils';
 
 function fmtCurrency(val) {
   const n = Number(val);
   return isNaN(n) ? '—' : `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function fmtDate(iso) {
-  if (!iso) return '—';
-  return new Date(iso + 'T00:00:00').toLocaleDateString('en-IN', {
-    day: '2-digit', month: 'long', year: 'numeric',
-  });
-}
 
 const INVOICE_TITLES = {
   CONSULTATION: 'OP Consultation Receipt',
@@ -211,7 +206,7 @@ export function InvoicePrintView({ invoice, visit }) {
         <span className="inv-title-text">{receiptTitle}</span>
         <span className="inv-title-meta">
           {invoice.invoiceNumber} &nbsp;·&nbsp;{' '}
-          {fmtDate(invoice.invoiceDate?.split?.('T')[0] ?? invoice.invoiceDate)}
+          {formatDate(invoice.invoiceDate)}
         </span>
       </div>
 

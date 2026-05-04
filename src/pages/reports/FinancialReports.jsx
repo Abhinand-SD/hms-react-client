@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppShell } from '../../components/AppShell';
 import { extractError, api } from '../../lib/api';
 import { getCollectionsReport } from '../../api/reports.api';
+import { formatDate } from '../../utils/dateUtils';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -145,7 +146,7 @@ export default function FinancialReports() {
             <div>
               <h1 className="text-lg font-bold text-slate-900">Financial Reports</h1>
               <p className="mt-0.5 text-xs text-slate-500">
-                {startDate} → {endDate}{userId ? ' · filtered by user' : ''}
+                {formatDate(startDate)} → {formatDate(endDate)}{userId ? ' · filtered by user' : ''}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">

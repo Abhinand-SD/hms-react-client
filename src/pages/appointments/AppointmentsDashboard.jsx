@@ -13,6 +13,7 @@ import { WalkInModal } from './WalkInModal';
 import { ConsultationModal } from '../billing/ConsultationModal';
 import { ComprehensivePatientForm } from '../../components/ComprehensivePatientForm';
 import { InvoicePrintView } from '../../components/InvoicePrintView';
+import { formatDate } from '../../utils/dateUtils';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -54,10 +55,6 @@ const ROLE_ALLOWED = {
 
 function today() { return new Date().toISOString().split('T')[0]; }
 
-function fmtDate(d) {
-  if (!d) return '';
-  return new Date(d).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
-}
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -415,7 +412,7 @@ export default function AppointmentsDashboard() {
           <div className="flex flex-wrap items-center justify-between gap-4 px-8 py-4">
             <div>
               <h1 className="text-lg font-bold text-slate-900">Appointments</h1>
-              <p className="text-xs text-slate-500">{fmtDate(date)}</p>
+              <p className="text-xs text-slate-500">{formatDate(date)}</p>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">

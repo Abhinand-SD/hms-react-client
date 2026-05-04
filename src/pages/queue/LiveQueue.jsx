@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { useAuth } from '../../lib/auth';
+import { formatDate } from '../../utils/dateUtils';
 import { extractError } from '../../lib/api';
 import { api } from '../../lib/api';
 import { listVisits, updateQueueStatus, updateVitals } from '../../api/visits.api';
@@ -38,11 +39,6 @@ const ROLE_CAN = {
 
 function todayStr() { return new Date().toISOString().split('T')[0]; }
 
-function fmtDateHeader(d) {
-  return new Date(d + 'T00:00:00').toLocaleDateString('en-IN', {
-    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
-  });
-}
 
 function elapsedStr(iso) {
   const mins = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
@@ -500,7 +496,7 @@ export default function LiveQueue() {
                 )}
               </div>
               <p className="mt-0.5 text-xs text-slate-500">
-                {fmtDateHeader(date)}
+                {formatDate(date)}
                 {lastRefresh && isToday && (
                   <span className="ml-2 text-slate-400">· updated {fmtTime(lastRefresh.toISOString())}</span>
                 )}
