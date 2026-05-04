@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
+import ReactDOM from 'react-dom';
 import { AppShell } from '../../components/AppShell';
 import { extractError } from '../../lib/api';
 import { listVisits } from '../../api/visits.api';
 import { refundInvoice } from '../../api/billing.api';
 import { ConsultationModal } from './ConsultationModal';
+import { InvoicePrintView } from '../../components/InvoicePrintView';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -221,6 +223,19 @@ export default function BillingDashboard() {
   const [err, setErr]             = useState('');
   const [consultationVisit, setConsultationVisit] = useState(null);
   const [refundTarget, setRefundTarget]           = useState(null); // invoice object
+  const [activePrint, setActivePrint]             = useState(null);
+
+  function requestPrint(invoice, visit) {
+    setActivePrint({ invoice, visit });
+  }
+
+  useEffect(() => {
+    if (!activePrint) return;
+    const handleAfterPrint = () => setActivePrint(null);
+    window.addEventListener('afterprint', handleAfterPrint);
+    window.print();
+    return () => window.removeEventListener('afterprint', handleAfterPrint);
+  }, [activePrint]);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -374,11 +389,16 @@ export default function BillingDashboard() {
       <ConsultationModal
         open={!!consultationVisit}
         visit={consultationVisit}
+        onRequestPrint={requestPrint}
         onClose={(refreshed) => {
           setConsultationVisit(null);
           if (refreshed) load(true);
         }}
       />
+      {activePrint && ReactDOM.createPortal(
+        <InvoicePrintView invoice={activePrint.invoice} visit={activePrint.visit} />,
+        document.body
+      )}
 
       {/* ── Refund modal ── */}
       <RefundModal

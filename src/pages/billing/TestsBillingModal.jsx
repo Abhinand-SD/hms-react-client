@@ -9,7 +9,6 @@ import { useEffect, useRef, useState } from 'react';
 import { api, extractError } from '../../lib/api';
 import { Modal } from '../../components/Modal';
 import { Button } from '../../components/Button';
-import { InvoicePrintView } from '../../components/InvoicePrintView';
 import { createServicesInvoice, getInvoiceById } from '../../api/billing.api';
 import { listServices } from '../../api/services.api';
 
@@ -254,7 +253,7 @@ function SuccessScreen({ data, onPrint, onClose }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function TestsBillingModal({ open, visit, onClose }) {
+export function TestsBillingModal({ open, visit, onClose, onRequestPrint }) {
   const [stage, setStage]       = useState(STAGE.LOADING);
   const [services, setServices] = useState([]);
   const [selected, setSelected] = useState(new Set());
@@ -479,7 +478,7 @@ export function TestsBillingModal({ open, visit, onClose }) {
 
         {/* SUCCESS */}
         {stage === STAGE.SUCCESS && successData && (
-          <SuccessScreen data={successData} onPrint={() => window.print()} onClose={handleClose} />
+          <SuccessScreen data={successData} onPrint={() => onRequestPrint?.(invoice, visit)} onClose={handleClose} />
         )}
 
         {/* ERROR */}
@@ -548,10 +547,6 @@ export function TestsBillingModal({ open, visit, onClose }) {
         )}
       </Modal>
 
-      {/* A5 print portal */}
-      {stage === STAGE.SUCCESS && invoice && (
-        <InvoicePrintView invoice={invoice} visit={visit} />
-      )}
     </>
   );
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import ReactDOM from 'react-dom';
 import { useAuth } from '../../lib/auth';
 import { extractError } from '../../lib/api';
 import { api } from '../../lib/api';
@@ -8,6 +9,7 @@ import { Button } from '../../components/Button';
 import { Modal } from '../../components/Modal';
 import { ConsultationModal } from '../billing/ConsultationModal';
 import { TestsBillingModal } from '../billing/TestsBillingModal';
+import { InvoicePrintView } from '../../components/InvoicePrintView';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -395,8 +397,21 @@ export default function LiveQueue() {
   const [lastRefresh, setLastRefresh] = useState(null);
   const [vitalsTarget, setVitalsTarget] = useState(null);
   const [consultationTarget, setConsultationTarget] = useState(null);
-  const [testsTarget, setTestsTarget] = useState(null);
+  const [testsTarget, setTestsTarget]               = useState(null);
+  const [activePrint, setActivePrint]               = useState(null);
   const timerRef = useRef(null);
+
+  function requestPrint(invoice, visit) {
+    setActivePrint({ invoice, visit });
+  }
+
+  useEffect(() => {
+    if (!activePrint) return;
+    const handleAfterPrint = () => setActivePrint(null);
+    window.addEventListener('afterprint', handleAfterPrint);
+    window.print();
+    return () => window.removeEventListener('afterprint', handleAfterPrint);
+  }, [activePrint]);
 
   const isToday = date === todayStr();
 
@@ -588,13 +603,19 @@ export default function LiveQueue() {
       <ConsultationModal
         open={!!consultationTarget}
         visit={consultationTarget}
+        onRequestPrint={requestPrint}
         onClose={() => { setConsultationTarget(null); load(true); }}
       />
       <TestsBillingModal
         open={!!testsTarget}
         visit={testsTarget}
+        onRequestPrint={requestPrint}
         onClose={() => { setTestsTarget(null); load(true); }}
       />
+      {activePrint && ReactDOM.createPortal(
+        <InvoicePrintView invoice={activePrint.invoice} visit={activePrint.visit} />,
+        document.body
+      )}
     </AppShell>
   );
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import ReactDOM from 'react-dom';
 import { AppShell } from '../../components/AppShell';
 import { extractError } from '../../lib/api';
 import { api } from '../../lib/api';
@@ -7,6 +8,7 @@ import { listServices } from '../../api/services.api';
 import { createExternalServicesInvoice } from '../../api/billing.api';
 import { TestsBillingModal } from '../billing/TestsBillingModal';
 import { ComprehensivePatientForm } from '../../components/ComprehensivePatientForm';
+import { InvoicePrintView } from '../../components/InvoicePrintView';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -333,7 +335,20 @@ export default function DiagnosticsDashboard() {
   const [loading, setLoading] = useState(true);
   const [err, setErr]       = useState('');
   const [search, setSearch] = useState('');
-  const [testsVisit, setTestsVisit] = useState(null);
+  const [testsVisit, setTestsVisit]   = useState(null);
+  const [activePrint, setActivePrint] = useState(null);
+
+  function requestPrint(invoice, visit) {
+    setActivePrint({ invoice, visit });
+  }
+
+  useEffect(() => {
+    if (!activePrint) return;
+    const handleAfterPrint = () => setActivePrint(null);
+    window.addEventListener('afterprint', handleAfterPrint);
+    window.print();
+    return () => window.removeEventListener('afterprint', handleAfterPrint);
+  }, [activePrint]);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -511,11 +526,16 @@ export default function DiagnosticsDashboard() {
       <TestsBillingModal
         open={!!testsVisit}
         visit={testsVisit}
+        onRequestPrint={requestPrint}
         onClose={(refreshed) => {
           setTestsVisit(null);
           if (refreshed) load(true);
         }}
       />
+      {activePrint && ReactDOM.createPortal(
+        <InvoicePrintView invoice={activePrint.invoice} visit={activePrint.visit} />,
+        document.body
+      )}
     </AppShell>
   );
 }

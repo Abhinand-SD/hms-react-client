@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { api, extractError } from '../../lib/api';
 import { Modal } from '../../components/Modal';
 import { Button } from '../../components/Button';
-import { InvoicePrintView } from '../../components/InvoicePrintView';
 import { listServices } from '../../api/services.api';
 import { checkoutVisit, getInvoiceById } from '../../api/billing.api';
 
@@ -359,7 +358,7 @@ function SuccessScreen({ data, onClose, onPrint }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function CheckoutModal({ open, onClose, visit }) {
+export function CheckoutModal({ open, onClose, visit, onRequestPrint }) {
   const [stage, setStage]       = useState(STAGE.LOADING);
   const [invoice, setInvoice]   = useState(null);
   const [services, setServices] = useState([]);
@@ -594,7 +593,7 @@ export function CheckoutModal({ open, onClose, visit }) {
   // ── Print handler ─────────────────────────────────────────────────────────
 
   function handlePrint() {
-    window.print();
+    onRequestPrint?.(invoice, visit);
   }
 
   // ── Modal close guard ─────────────────────────────────────────────────────
@@ -797,10 +796,6 @@ export function CheckoutModal({ open, onClose, visit }) {
         )}
       </Modal>
 
-      {/* A5 print view — rendered as a portal into document.body, hidden on screen */}
-      {stage === STAGE.SUCCESS && invoice && (
-        <InvoicePrintView invoice={invoice} visit={visit} />
-      )}
     </>
   );
 }

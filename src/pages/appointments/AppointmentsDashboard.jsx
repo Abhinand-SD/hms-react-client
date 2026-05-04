@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import ReactDOM from 'react-dom';
 import { useAuth } from '../../lib/auth';
 import { extractError } from '../../lib/api';
 import { api } from '../../lib/api';
@@ -302,20 +303,18 @@ export default function AppointmentsDashboard() {
     return () => clearTimeout(t);
   }, [search]);
 
-  // ── Singleton print: only ever one InvoicePrintView in the DOM at a time ──────
+  // ── Singleton print slot ────────────────────────────────────────────────────
   function requestPrint(invoice, visit) {
     setActivePrint({ invoice, visit });
-    // Give React one tick to mount the portal before invoking the browser dialog.
-    setTimeout(() => {
-      window.print();
-      // Clear the portal once the user dismisses the print dialog.
-      const cleanup = () => {
-        setActivePrint(null);
-        window.removeEventListener('afterprint', cleanup);
-      };
-      window.addEventListener('afterprint', cleanup);
-    }, 150);
   }
+
+  useEffect(() => {
+    if (!activePrint) return;
+    const handleAfterPrint = () => setActivePrint(null);
+    window.addEventListener('afterprint', handleAfterPrint);
+    window.print();
+    return () => window.removeEventListener('afterprint', handleAfterPrint);
+  }, [activePrint]);
 
   async function load() {
     setLoading(true);
@@ -675,6 +674,7 @@ export default function AppointmentsDashboard() {
       <ConsultationModal
         open={!!consultationVisit}
         visit={consultationVisit}
+        onRequestPrint={requestPrint}
         onClose={async (paid) => {
           const visitToQueue = consultationVisit;
           setConsultationVisit(null);
@@ -690,11 +690,12 @@ export default function AppointmentsDashboard() {
       <ConsultationModal
         open={!!printTarget}
         visit={printTarget}
+        onRequestPrint={requestPrint}
         onClose={() => setPrintTarget(null)}
       />
-      {/* ── Singleton print slot — only one InvoicePrintView ever in the DOM ── */}
-      {activePrint && (
-        <InvoicePrintView invoice={activePrint.invoice} visit={activePrint.visit} />
+      {activePrint && ReactDOM.createPortal(
+        <InvoicePrintView invoice={activePrint.invoice} visit={activePrint.visit} />,
+        document.body
       )}
     </AppShell>
   );
