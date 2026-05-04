@@ -11,19 +11,19 @@ function fmtINR(n) {
 }
 
 // Group payment-mode codes for the chart bands.
+// All non-cash electronic modes (POS, card swipe, UPI, online transfer, etc.)
+// collapse into a single "Digital/POS" bucket so nothing falls into "Other".
 const CASH_CODES    = new Set(['CASH']);
-const CARD_CODES    = new Set(['CARD', 'POS']);
-const UPI_CODES     = new Set(['UPI']);
+const DIGITAL_CODES = new Set(['CARD', 'POS', 'ONLINE', 'UPI', 'NETBANKING', 'NEFT', 'RTGS', 'IMPS']);
 function bucketise(breakdown) {
-  let cash = 0, card = 0, upi = 0, other = 0;
+  let cash = 0, digital = 0, other = 0;
   for (const m of breakdown ?? []) {
     const code = String(m.code).toUpperCase();
-    if (CASH_CODES.has(code))      cash  += Number(m.total);
-    else if (CARD_CODES.has(code)) card  += Number(m.total);
-    else if (UPI_CODES.has(code))  upi   += Number(m.total);
-    else                            other += Number(m.total);
+    if (CASH_CODES.has(code))       cash    += Number(m.total);
+    else if (DIGITAL_CODES.has(code)) digital += Number(m.total);
+    else                              other   += Number(m.total);
   }
-  return { cash, card, upi, other };
+  return { cash, digital, other };
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -51,10 +51,11 @@ export default function AdminDashboard() {
   const totals = data?.totals ?? {
     totalRevenue: 0, cashTotal: 0, digitalTotal: 0,
     patientsVisitedToday: 0, activeDoctors: 0,
+    totalFootfall: 0, pendingDiagnostics: 0,
   };
 
   const buckets = useMemo(() => bucketise(data?.revenueBreakdown), [data]);
-  const totalForChart = buckets.cash + buckets.card + buckets.upi + buckets.other;
+  const totalForChart = buckets.cash + buckets.digital + buckets.other;
 
   return (
     <AppShell>
@@ -98,10 +99,31 @@ export default function AdminDashboard() {
           )}
 
           {/* Top KPIs */}
-          <section className="grid grid-cols-2 gap-3 md:grid-cols-3">
-            <KPI label="Today's Revenue" value={fmtINR(totals.totalRevenue)} accent="slate" sub={`Cash ${fmtINR(totals.cashTotal)} · Digital ${fmtINR(totals.digitalTotal)}`} />
-            <KPI label="Patients Today"  value={totals.patientsVisitedToday} accent="blue" sub="OPD visits today" />
-            <KPI label="Active Doctors"  value={totals.activeDoctors}        accent="emerald" sub="Currently active" />
+          <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <KPI
+              label="Today's Revenue"
+              value={fmtINR(totals.totalRevenue)}
+              accent="slate"
+              sub={`Cash ${fmtINR(totals.cashTotal)} · Digital ${fmtINR(totals.digitalTotal)}`}
+            />
+            <KPI
+              label="Total Footfall"
+              value={totals.totalFootfall}
+              accent="blue"
+              sub={`${totals.patientsVisitedToday} OPD · ${totals.totalFootfall - totals.patientsVisitedToday} external`}
+            />
+            <KPI
+              label="Pending Diagnostics"
+              value={totals.pendingDiagnostics}
+              accent="amber"
+              sub="Test bills awaiting payment"
+            />
+            <KPI
+              label="Active Doctors"
+              value={totals.activeDoctors}
+              accent="emerald"
+              sub="Currently active"
+            />
           </section>
 
           {/* Revenue breakdown chart */}
@@ -125,18 +147,16 @@ export default function AdminDashboard() {
               <>
                 {/* Stacked bar */}
                 <div className="flex h-3 w-full overflow-hidden rounded-full bg-slate-100">
-                  <Band value={buckets.cash}  total={totalForChart} cls="bg-emerald-500" />
-                  <Band value={buckets.card}  total={totalForChart} cls="bg-blue-500" />
-                  <Band value={buckets.upi}   total={totalForChart} cls="bg-violet-500" />
-                  <Band value={buckets.other} total={totalForChart} cls="bg-slate-400" />
+                  <Band value={buckets.cash}    total={totalForChart} cls="bg-emerald-500" />
+                  <Band value={buckets.digital} total={totalForChart} cls="bg-blue-500" />
+                  <Band value={buckets.other}   total={totalForChart} cls="bg-slate-400" />
                 </div>
 
                 {/* Legend / breakdown */}
-                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  <Legend cls="bg-emerald-500" label="Cash"   value={buckets.cash}  total={totalForChart} />
-                  <Legend cls="bg-blue-500"    label="Card"   value={buckets.card}  total={totalForChart} />
-                  <Legend cls="bg-violet-500"  label="UPI"    value={buckets.upi}   total={totalForChart} />
-                  <Legend cls="bg-slate-400"   label="Other"  value={buckets.other} total={totalForChart} />
+                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  <Legend cls="bg-emerald-500" label="Cash"        value={buckets.cash}    total={totalForChart} />
+                  <Legend cls="bg-blue-500"    label="Digital/POS" value={buckets.digital} total={totalForChart} />
+                  <Legend cls="bg-slate-400"   label="Other"       value={buckets.other}   total={totalForChart} />
                 </div>
               </>
             )}

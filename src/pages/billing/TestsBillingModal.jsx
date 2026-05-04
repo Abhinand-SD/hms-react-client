@@ -1,5 +1,5 @@
 /**
- * Phase 2 — Diagnostic Tests Billing Modal
+ * Diagnostic Tests Billing Modal
  *
  * Lets the receptionist select prescribed tests (ECG, ECHO, TMT, …),
  * creates a SERVICES invoice, collects payment, then prints a
@@ -428,7 +428,7 @@ export function TestsBillingModal({ open, visit, onClose, onRequestPrint }) {
         title={
           stage === STAGE.SUCCESS     ? 'Tests Billed' :
           stage === STAGE.POS_WAITING ? 'POS Terminal' :
-          'Diagnostic Tests — Phase 2'
+          'Diagnostic Tests Billing'
         }
         size="md"
       >

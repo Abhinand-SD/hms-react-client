@@ -2,8 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { AppShell } from '../../components/AppShell';
 import { extractError } from '../../lib/api';
-import { listVisits } from '../../api/visits.api';
-import { refundInvoice } from '../../api/billing.api';
+import { listInvoices, refundInvoice, getInvoiceById } from '../../api/billing.api';
 import { ConsultationModal } from './ConsultationModal';
 import { InvoicePrintView } from '../../components/InvoicePrintView';
 import { formatDate } from '../../utils/dateUtils';
@@ -136,68 +135,78 @@ function RefundModal({ invoice, onClose }) {
 
 // ─── Table row ────────────────────────────────────────────────────────────────
 
-function VisitRow({ visit, invoiceData, onPayConsultation, onRefund }) {
-  const consultation = invoiceData?.consultation ?? null;
-  const consultPaid  = consultation?.paymentStatus === 'PAID';
-  const isRefunded   = consultation?.paymentStatus === 'REFUNDED';
+function InvoiceRow({ invoice, onPayConsultation, onRefund, onPrint }) {
+  const isPaid     = invoice.paymentStatus === 'PAID';
+  const isRefunded = invoice.paymentStatus === 'REFUNDED';
+  const isPending  = !isPaid && !isRefunded;
+  const isConsult  = invoice.invoiceType === 'CONSULTATION';
 
-  const totalAmount = invoiceData
-    ? Number(consultation?.netAmount ?? 0)
-    : null;
-
-  const overallStatus = !consultation ? null : consultation.paymentStatus;
+  const patient  = invoice.patient ?? invoice.visit?.patient;
+  const opNumber = invoice.visit?.opNumber;
+  const doctor   = invoice.visit?.doctor;
 
   return (
     <tr className="group hover:bg-slate-50 transition-colors">
       <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500 tabular-nums">
-        {fmtTime(visit.createdAt)}
+        {fmtTime(invoice.createdAt)}
       </td>
       <td className="whitespace-nowrap px-4 py-3">
-        <span className="font-mono text-xs font-bold text-blue-700">{visit.opNumber}</span>
+        <div className="flex items-center gap-1.5">
+          {opNumber
+            ? <span className="font-mono text-xs font-bold text-blue-700">{opNumber}</span>
+            : <span className="text-slate-500 text-xs font-medium">EXT-WALKIN</span>}
+          <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ring-1 ring-inset ${
+            isConsult
+              ? 'bg-blue-50 text-blue-600 ring-blue-200'
+              : 'bg-teal-50 text-teal-600 ring-teal-200'
+          }`}>
+            {isConsult ? 'Consult' : 'Tests'}
+          </span>
+        </div>
       </td>
       <td className="px-4 py-3">
         <div className="text-sm font-semibold text-slate-900 leading-snug">
-          {patientName(visit.patient)}
+          {patientName(patient)}
         </div>
         <div className="font-mono text-[11px] text-slate-400 leading-snug">
-          {visit.patient?.uhid}
+          {patient?.uhid}
         </div>
       </td>
       <td className="px-4 py-3 text-sm text-slate-600">
-        {visit.doctor?.name ?? '—'}
+        {doctor?.name
+          ? doctor.name
+          : isConsult
+          ? <span className="text-slate-400 text-xs">—</span>
+          : <span className="text-slate-500 text-xs">Direct Lab</span>}
       </td>
       <td className="whitespace-nowrap px-4 py-3 text-sm font-semibold text-slate-800">
-        {totalAmount !== null ? fmtCurrency(totalAmount) : '—'}
+        {fmtCurrency(invoice.netAmount ?? 0)}
       </td>
       <td className="whitespace-nowrap px-4 py-3">
-        <InvBadge status={overallStatus} />
+        <InvBadge status={invoice.paymentStatus} />
       </td>
       <td className="whitespace-nowrap px-4 py-3 text-right">
-        {isRefunded ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-inset ring-rose-200">
-            ↩ Refunded
-          </span>
-        ) : !consultation || !consultPaid ? (
+        {isPending && isConsult && invoice.visit && (
           <button
             type="button"
-            onClick={() => onPayConsultation(visit)}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition shadow-sm ${
-              !consultation
-                ? 'bg-blue-600 text-white hover:bg-blue-700'
-                : 'bg-amber-500 text-white hover:bg-amber-600'
-            }`}
+            onClick={() => onPayConsultation(invoice.visit)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700"
           >
-            <CashRegisterIcon />
-            {!consultation ? 'Pay Consultation' : 'Complete Payment'}
+            <CashRegisterIcon /> Pay
           </button>
-        ) : (
+        )}
+        {isPaid && (
           <div className="flex items-center justify-end gap-2">
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
-              ✓ Paid
-            </span>
             <button
               type="button"
-              onClick={() => onRefund(consultation)}
+              onClick={() => onPrint(invoice, invoice.visit ?? null)}
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              <PrintIcon /> Print
+            </button>
+            <button
+              type="button"
+              onClick={() => onRefund(invoice)}
               className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-100"
             >
               <RefundIcon /> Refund
@@ -212,18 +221,22 @@ function VisitRow({ visit, invoiceData, onPayConsultation, onRefund }) {
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function BillingDashboard() {
-  const [date, setDate]           = useState(todayStr);
-  const [visits, setVisits]       = useState([]);
-  const [invoiceMap, setInvoiceMap] = useState({});
-  const [loading, setLoading]     = useState(true);
-  const [err, setErr]             = useState('');
+  const [date, setDate]       = useState(todayStr);
+  const [invoices, setInvoices] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr]         = useState('');
   const [consultationVisit, setConsultationVisit] = useState(null);
   const [refundTarget, setRefundTarget]           = useState(null);
   const [activePrint, setActivePrint]             = useState(null);
-  const [billTypeFilter, setBillTypeFilter]       = useState('all'); // 'all' | 'consultation' | 'diagnostics'
+  const [billTypeFilter, setBillTypeFilter]       = useState('all');
 
-  function requestPrint(invoice, visit) {
-    setActivePrint({ invoice, visit });
+  async function requestPrint(invoice, visit) {
+    try {
+      const { data } = await getInvoiceById(invoice.id);
+      setActivePrint({ invoice: data.data.invoice, visit });
+    } catch {
+      setActivePrint({ invoice, visit });
+    }
   }
 
   useEffect(() => {
@@ -238,18 +251,8 @@ export default function BillingDashboard() {
     if (!silent) setLoading(true);
     setErr('');
     try {
-      const { data: vData } = await listVisits({ date, limit: 100 });
-      const allVisits = vData.data.visits;
-      setVisits(allVisits);
-
-      const map = {};
-      for (const v of allVisits) {
-        map[v.id] = {
-          consultation: v.invoices?.find((i) => i.invoiceType === 'CONSULTATION') ?? null,
-          services:     v.invoices?.filter((i) => i.invoiceType === 'SERVICES') ?? [],
-        };
-      }
-      setInvoiceMap(map);
+      const { data } = await listInvoices({ startDate: date, endDate: date, limit: 500 });
+      setInvoices(data.data?.invoices ?? []);
     } catch (e) {
       setErr(extractError(e));
     } finally {
@@ -261,30 +264,16 @@ export default function BillingDashboard() {
 
   // ── Stats ─────────────────────────────────────────────────────────────────
 
-  const unbilled  = visits.filter((v) => !invoiceMap[v.id]?.consultation).length;
-  const pending   = visits.filter((v) => {
-    const m = invoiceMap[v.id];
-    if (!m?.consultation) return false;
-    return m.consultation.paymentStatus !== 'PAID' ||
-           m.services.some((s) => s.paymentStatus !== 'PAID');
-  }).length;
-  const paid      = visits.filter((v) => invoiceMap[v.id]?.consultation?.paymentStatus === 'PAID').length;
-  const collected = visits.reduce((sum, v) => {
-    const m = invoiceMap[v.id];
-    if (!m) return sum;
-    let total = m.consultation?.paymentStatus === 'PAID' ? Number(m.consultation.netAmount) : 0;
-    for (const si of m.services) {
-      if (si.paymentStatus === 'PAID') total += Number(si.netAmount);
-    }
-    return sum + total;
-  }, 0);
+  const pending   = invoices.filter((i) => i.paymentStatus !== 'PAID' && i.paymentStatus !== 'REFUNDED').length;
+  const paid      = invoices.filter((i) => i.paymentStatus === 'PAID').length;
+  const collected = invoices.filter((i) => i.paymentStatus === 'PAID')
+                             .reduce((s, i) => s + Number(i.netAmount ?? 0), 0);
 
   // ── Filtered view ─────────────────────────────────────────────────────────
 
-  const displayedVisits = visits.filter((v) => {
-    const m = invoiceMap[v.id];
-    if (billTypeFilter === 'consultation') return !!m?.consultation;
-    if (billTypeFilter === 'diagnostics')  return (m?.services?.length ?? 0) > 0;
+  const displayedInvoices = invoices.filter((inv) => {
+    if (billTypeFilter === 'consultation') return inv.invoiceType === 'CONSULTATION';
+    if (billTypeFilter === 'diagnostics')  return inv.invoiceType === 'SERVICES';
     return true;
   });
 
@@ -306,7 +295,6 @@ export default function BillingDashboard() {
               {/* Stats */}
               {!loading && (
                 <div className="flex items-center gap-2">
-                  <Stat value={unbilled}  label="unbilled" cls="border-rose-200 bg-rose-50 text-rose-700" />
                   <Stat value={pending}   label="pending"  cls="border-amber-200 bg-amber-50 text-amber-700" />
                   <Stat value={paid}      label="paid"     cls="border-emerald-200 bg-emerald-50 text-emerald-700" />
                   <Stat value={fmtCurrency(collected)} label="collected" cls="border-slate-200 bg-slate-50 text-slate-700" />
@@ -319,9 +307,9 @@ export default function BillingDashboard() {
                 onChange={(e) => setBillTypeFilter(e.target.value)}
                 className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               >
-                <option value="all">All Bills</option>
-                <option value="consultation">Consultation Only</option>
-                <option value="diagnostics">Diagnostics Only</option>
+                <option value="all">All</option>
+                <option value="consultation">Consultation</option>
+                <option value="diagnostics">Diagnostics</option>
               </select>
 
               {/* Date picker */}
@@ -358,14 +346,14 @@ export default function BillingDashboard() {
             <div className="flex flex-1 items-center justify-center">
               <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-slate-200 border-t-blue-600" />
             </div>
-          ) : displayedVisits.length === 0 ? (
+          ) : displayedInvoices.length === 0 ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-200 text-slate-400">
                 <EmptyBillingIcon />
               </div>
               <div>
-                <p className="font-semibold text-slate-600">No completed visits</p>
-                <p className="text-sm text-slate-400">Completed OPD visits will appear here for billing.</p>
+                <p className="font-semibold text-slate-600">No invoices found</p>
+                <p className="text-sm text-slate-400">Invoices for this date will appear here.</p>
               </div>
             </div>
           ) : (
@@ -374,7 +362,7 @@ export default function BillingDashboard() {
                 <table className="w-full border-collapse text-left">
                   <thead className="sticky top-0 bg-slate-50 z-10">
                     <tr>
-                      {['Time', 'OP #', 'Patient', 'Doctor', 'Amount', 'Status', ''].map((h) => (
+                      {['Time', 'OP # / Type', 'Patient', 'Doctor', 'Amount', 'Status', ''].map((h) => (
                         <th
                           key={h}
                           className="border-b border-slate-200 px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500"
@@ -385,13 +373,13 @@ export default function BillingDashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {displayedVisits.map((v) => (
-                      <VisitRow
-                        key={v.id}
-                        visit={v}
-                        invoiceData={invoiceMap[v.id]}
+                    {displayedInvoices.map((inv) => (
+                      <InvoiceRow
+                        key={inv.id}
+                        invoice={inv}
                         onPayConsultation={setConsultationVisit}
                         onRefund={setRefundTarget}
+                        onPrint={requestPrint}
                       />
                     ))}
                   </tbody>
@@ -437,6 +425,16 @@ function RefundIcon() {
     <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
       <path d="M2 8a6 6 0 1 0 1.5-4" strokeLinecap="round" />
       <path d="M2 4v4h4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function PrintIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M4 5V2.5h8V5" />
+      <rect x="1.5" y="5" width="13" height="7" rx="1.5" />
+      <path d="M4 12.5h8v1H4z" fill="currentColor" stroke="none" />
     </svg>
   );
 }
