@@ -35,7 +35,7 @@ function todayStr() { return new Date().toISOString().split('T')[0]; }
 
 function calcRemaining(invoice) {
   if (!invoice) return 0;
-  const paid = invoice.payments.reduce((s, p) => s + Number(p.amountPaid), 0);
+  const paid = (invoice.payments ?? []).reduce((s, p) => s + Number(p.amountPaid), 0);
   return Math.max(0, Number(invoice.netAmount) - paid);
 }
 
@@ -253,7 +253,7 @@ function SuccessScreen({ data, onPrint, onClose }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function TestsBillingModal({ open, visit, onClose, onRequestPrint }) {
+export function TestsBillingModal({ open, visit, onClose, onRequestPrint, existingInvoice }) {
   const [stage, setStage]       = useState(STAGE.LOADING);
   const [services, setServices] = useState([]);
   const [selected, setSelected] = useState(new Set());
@@ -274,7 +274,7 @@ export function TestsBillingModal({ open, visit, onClose, onRequestPrint }) {
 
   // ── On open: fetch services + payment modes ────────────────────────────────
   useEffect(() => {
-    if (!open || !visit) return;
+    if (!open || (!visit && !existingInvoice)) return;
     setStage(STAGE.LOADING);
     setInvoice(null);
     setServices([]);
@@ -286,6 +286,28 @@ export function TestsBillingModal({ open, visit, onClose, onRequestPrint }) {
     setSuccessData(null);
     setPtrn(null);
     clearInterval(pollRef.current);
+
+    // When an invoice already exists (e.g. external patient), skip SELECT and go straight to READY.
+    if (existingInvoice) {
+      api.get('/payment-modes', { params: { limit: 100, isActive: 'true' } })
+        .then(({ data: pmData }) => {
+          const modeList = pmData.data.items ?? [];
+          setModes(modeList);
+          if (modeList.length > 0) {
+            const { cash, pos } = pickModes(modeList);
+            setCashModeId(cash.id);
+            setPosModeId(pos.id);
+            setSplitPosId(pos.id);
+          }
+          setInvoice(existingInvoice);
+          const rem = calcRemaining(existingInvoice);
+          setCashAmt(rem.toFixed(2));
+          setSplitCash('');
+          setStage(STAGE.READY);
+        })
+        .catch((e) => { setErr(extractError(e)); setStage(STAGE.ERROR); });
+      return;
+    }
 
     Promise.all([
       listServices({ isActive: 'true' }),
@@ -306,7 +328,7 @@ export function TestsBillingModal({ open, visit, onClose, onRequestPrint }) {
       })
       .catch((e) => { setErr(extractError(e)); setStage(STAGE.ERROR); });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, visit, retryKey]);
+  }, [open, visit, existingInvoice, retryKey]);
 
   useEffect(() => () => clearInterval(pollRef.current), []);
 
@@ -507,9 +529,10 @@ export function TestsBillingModal({ open, visit, onClose, onRequestPrint }) {
                 <div>
                   <p className="font-mono text-xs font-semibold text-teal-700">{invoice.invoiceNumber}</p>
                   <p className="mt-0.5 text-sm font-bold text-slate-900">
-                    {visit?.patient?.firstName} {visit?.patient?.lastName ?? ''}
+                    {(visit?.patient ?? invoice?.patient)?.firstName}{' '}
+                    {(visit?.patient ?? invoice?.patient)?.lastName ?? ''}
                   </p>
-                  <p className="text-[11px] text-slate-500 font-mono">{visit?.patient?.uhid}</p>
+                  <p className="text-[11px] text-slate-500 font-mono">{(visit?.patient ?? invoice?.patient)?.uhid}</p>
                 </div>
                 <div className="text-right shrink-0">
                   <p className="text-xs text-slate-500">Tests Total</p>

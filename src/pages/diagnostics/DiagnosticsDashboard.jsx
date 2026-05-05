@@ -2,10 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { AppShell } from '../../components/AppShell';
 import { extractError } from '../../lib/api';
-import { api } from '../../lib/api';
+
 import { listVisits } from '../../api/visits.api';
 import { listServices } from '../../api/services.api';
-import { createExternalServicesInvoice, getInvoiceById, listInvoices } from '../../api/billing.api';
+import { createExternalServicesInvoice, listInvoices } from '../../api/billing.api';
 import { TestsBillingModal } from '../billing/TestsBillingModal';
 import { ComprehensivePatientForm } from '../../components/ComprehensivePatientForm';
 import { InvoicePrintView } from '../../components/InvoicePrintView';
@@ -130,20 +130,15 @@ const EMPTY_EXT = {
   emergencyContactName: '', emergencyContactMobile: '',
 };
 
-function ExternalPatientPanel({ onSuccess }) {
+function ExternalPatientPanel({ onBillCreated }) {
   const [patientForm, setPatientForm] = useState(EMPTY_EXT);
   const [services, setServices]       = useState([]);
   const [selected, setSelected]       = useState(new Set());
-  // steps: 'form' | 'tests' | 'payment' | 'success'
+  // steps: 'form' | 'tests'
   const [step, setStep]               = useState('form');
   const [busy, setBusy]               = useState(false);
-  const [payBusy, setPayBusy]         = useState(false);
   const [err, setErr]                 = useState('');
-  const [result, setResult]           = useState(null);
   const [formErrors, setFormErrors]   = useState({});
-  const [paymentModes, setPaymentModes] = useState([]);
-  const [cashModeId, setCashModeId]   = useState('');
-  const [cashAmt, setCashAmt]         = useState('');
 
   useEffect(() => {
     listServices({ isActive: 'true' })
@@ -186,46 +181,16 @@ function ExternalPatientPanel({ onSuccess }) {
       if (payload.emergencyContactName === '')   payload.emergencyContactName   = null;
       if (payload.emergencyContactMobile === '') payload.emergencyContactMobile = null;
 
-      const [{ data: invData }, { data: pmData }] = await Promise.all([
-        createExternalServicesInvoice(payload, [...selected]),
-        api.get('/payment-modes', { params: { limit: 100, isActive: 'true' } }),
-      ]);
-
-      const resultData  = invData.data;
-      const modeList    = pmData.data.items ?? [];
-      const cashMode    = modeList.find((m) => (m.type ?? m.name ?? '').toLowerCase().includes('cash'))
-                          ?? modeList[0];
-
-      setResult(resultData);
-      setPaymentModes(modeList);
-      if (cashMode) setCashModeId(cashMode.id);
-      setCashAmt(String(Number(resultData.invoice?.netAmount ?? 0).toFixed(2)));
-      setStep('payment');
+      const { data: invData } = await createExternalServicesInvoice(payload, [...selected]);
+      // Hand the invoice to the parent which opens the full billing modal.
+      onBillCreated(invData.data);
+      setPatientForm(EMPTY_EXT);
+      setSelected(new Set());
+      setStep('form');
     } catch (e) {
       setErr(extractError(e));
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function payCash() {
-    if (!cashModeId) { setErr('No cash payment mode available.'); return; }
-    setPayBusy(true); setErr('');
-    try {
-      await api.post('/payments', {
-        invoiceId:     result.invoice.id,
-        paymentModeId: cashModeId,
-        amountPaid:    Number(cashAmt),
-        paymentDate:   todayStr(),
-      });
-      const { data: refreshed } = await getInvoiceById(result.invoice.id);
-      const paidInvoice = refreshed.data.invoice;
-      setResult((r) => ({ ...r, invoice: paidInvoice }));
-      setStep('success');
-    } catch (e) {
-      setErr(extractError(e));
-    } finally {
-      setPayBusy(false);
     }
   }
 
@@ -239,105 +204,6 @@ function ExternalPatientPanel({ onSuccess }) {
 
   const selectedSvcs = services.filter((s) => selected.has(s.id));
   const testsTotal   = selectedSvcs.reduce((sum, s) => sum + Number(s.price), 0);
-
-  // ── Payment step ──────────────────────────────────────────────────────────
-  if (step === 'payment' && result) {
-    const cashModeName = paymentModes.find((m) => m.id === cashModeId)?.name ?? 'Cash';
-    return (
-      <div className="max-w-md mx-auto space-y-4 py-6 px-4">
-        <div className="rounded-xl border border-teal-200 bg-teal-50 p-4">
-          <p className="text-[11px] font-bold uppercase tracking-widest text-teal-600 mb-2">Invoice Summary</p>
-          <p className="font-mono text-sm font-bold text-teal-800">{result.invoice?.invoiceNumber}</p>
-          <p className="text-sm text-slate-700 mt-0.5">
-            {result.invoice?.patient?.firstName} {result.invoice?.patient?.lastName ?? ''}
-          </p>
-          {result.isNewPatient && (
-            <span className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-              New patient record created
-            </span>
-          )}
-        </div>
-
-        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 flex items-center justify-between">
-          <span className="text-sm font-bold text-slate-900">Total Due</span>
-          <span className="text-lg font-bold text-teal-700">{fmtCurrency(result.invoice?.netAmount ?? 0)}</span>
-        </div>
-
-        <div className="space-y-2">
-          <label className="text-xs font-semibold text-slate-600">
-            Collect ({cashModeName})
-          </label>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={cashAmt}
-            onChange={(e) => setCashAmt(e.target.value)}
-            className="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
-          />
-        </div>
-
-        {err && (
-          <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">⚠ {err}</p>
-        )}
-
-        <div className="flex gap-3 pt-1">
-          <button
-            onClick={payCash}
-            disabled={payBusy || !cashAmt || Number(cashAmt) <= 0}
-            className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-teal-700 disabled:opacity-60 disabled:cursor-not-allowed transition"
-          >
-            {payBusy ? 'Recording…' : `Collect & Pay (${fmtCurrency(cashAmt || 0)})`}
-          </button>
-        </div>
-        <button
-          onClick={() => setStep('tests')}
-          className="w-full text-xs font-semibold text-slate-500 hover:text-slate-700 transition"
-        >
-          ← Back to test selection
-        </button>
-      </div>
-    );
-  }
-
-  // ── Success step ──────────────────────────────────────────────────────────
-  if (step === 'success' && result) {
-    return (
-      <div className="flex flex-col items-center gap-5 py-10 text-center px-4">
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-teal-100 ring-4 ring-teal-50">
-          <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-            <path d="M6 16l7 7L26 9" stroke="#0d9488" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </div>
-        <div>
-          <p className="text-lg font-bold text-slate-900">Payment Recorded!</p>
-          {result.isNewPatient && (
-            <p className="mt-0.5 text-xs font-medium text-amber-600">New patient record created</p>
-          )}
-          <p className="mt-1 font-mono text-sm font-semibold text-teal-700">{result.invoice?.invoiceNumber}</p>
-          <p className="mt-0.5 text-sm text-slate-500">
-            {result.invoice?.patient?.firstName} {result.invoice?.patient?.lastName ?? ''} ·{' '}
-            {fmtCurrency(result.invoice?.netAmount ?? 0)} collected
-          </p>
-        </div>
-        <div className="flex gap-3">
-          <button
-            onClick={() => onSuccess(result)}
-            className="inline-flex items-center gap-2 rounded-lg bg-teal-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-700"
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 5V2.5h8V5" /><rect x="1.5" y="5" width="13" height="7" rx="1.5" /><path d="M4 12.5h8v1H4z" fill="currentColor" stroke="none" /></svg>
-            Print Bill
-          </button>
-          <button
-            onClick={() => { setStep('form'); setPatientForm(EMPTY_EXT); setSelected(new Set()); setResult(null); setErr(''); }}
-            className="rounded-lg border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
-          >
-            New Patient
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   if (step === 'tests') {
     return (
@@ -442,7 +308,8 @@ export default function DiagnosticsDashboard() {
   const [search, setSearch] = useState('');
   const [testsVisit, setTestsVisit]   = useState(null);
   const [activePrint, setActivePrint] = useState(null);
-  const [extBills, setExtBills]       = useState([]);  // today's SERVICES invoices
+  const [extBills, setExtBills]       = useState([]);
+  const [extInvoice, setExtInvoice]   = useState(null);  // today's SERVICES invoices
 
   function requestPrint(invoice, visit) {
     setActivePrint({ invoice, visit });
@@ -579,12 +446,7 @@ export default function DiagnosticsDashboard() {
             <div className="space-y-5 overflow-y-auto flex-1">
               <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <ExternalPatientPanel
-                  onSuccess={(result) => {
-                    requestPrint(result.invoice, null);
-                    load(true);
-                    loadExtBills();
-                    setTab('patients');
-                  }}
+                  onBillCreated={(resultData) => setExtInvoice(resultData.invoice)}
                 />
               </div>
 
@@ -705,6 +567,22 @@ export default function DiagnosticsDashboard() {
         onClose={(refreshed) => {
           setTestsVisit(null);
           if (refreshed) load(true);
+        }}
+      />
+      <TestsBillingModal
+        open={!!extInvoice}
+        visit={null}
+        existingInvoice={extInvoice}
+        onRequestPrint={requestPrint}
+        onClose={(refreshed) => {
+          const inv = extInvoice;
+          setExtInvoice(null);
+          if (refreshed) {
+            requestPrint(inv, null);
+            load(true);
+            loadExtBills();
+            setTab('patients');
+          }
         }}
       />
       {activePrint && ReactDOM.createPortal(
