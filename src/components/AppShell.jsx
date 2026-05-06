@@ -11,7 +11,9 @@ const NAV = [
   // { to: '/queue',         label: 'Live Queue',   icon: QueueIcon,       roles: null },
   { to: '/billing',       label: 'Billing',      icon: BillingIcon,     roles: ['ADMIN', 'RECEPTIONIST'] },
   { to: '/diagnostics',   label: 'Diagnostics',  icon: DiagnosticsIcon, roles: ['ADMIN', 'RECEPTIONIST'] },
-  { to: '/reports',       label: 'Reports',      icon: ReportsIcon,     roles: ['ADMIN'] },
+  { label: 'Reports', divider: true, roles: ['ADMIN'] },
+  { to: '/reports',                  label: 'Financial Reports',  icon: ReportsIcon,          roles: ['ADMIN'], end: true },
+  { to: '/reports/daily-collection', label: 'Daily Collection',   icon: DailyCollectionIcon,  roles: ['ADMIN'] },
   { label: 'Masters', divider: true, hideForRoles: ['DOCTOR'] },
   { to: '/masters/services',      label: 'Services',      icon: ServicesIcon, roles: ['ADMIN'] },
   { to: '/masters/doctors',       label: 'Doctors',       icon: DoctorIcon,   roles: null, hideForRoles: ['DOCTOR'] },
@@ -69,6 +71,7 @@ export function AppShell({ children }) {
               <NavLink
                 key={item.to}
                 to={item.to}
+                end={item.end ?? false}
                 className={({ isActive }) =>
                   `flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors ${
                     isActive
@@ -229,6 +232,16 @@ function ServicesIcon() {
     <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
       <path d="M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2z" />
       <path d="M8 5v3l2 2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function DailyCollectionIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <rect x="2" y="2" width="12" height="12" rx="1.5" />
+      <path d="M5 5h4M5 8h6M5 11h3" strokeLinecap="round" />
+      <path d="M11 9l1.5 1.5L14 9" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

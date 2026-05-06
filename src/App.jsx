@@ -17,6 +17,7 @@ import LiveQueue from './pages/queue/LiveQueue';
 import BillingDashboard from './pages/billing/BillingDashboard';
 import DiagnosticsDashboard from './pages/diagnostics/DiagnosticsDashboard';
 import FinancialReports from './pages/reports/FinancialReports';
+import DailyCollectionReport from './pages/reports/DailyCollectionReport';
 
 export default function App() {
   return (
@@ -46,7 +47,8 @@ export default function App() {
           <Route path="/diagnostics" element={<RequireRole roles={['ADMIN', 'RECEPTIONIST']}><DiagnosticsDashboard /></RequireRole>} />
 
           {/* Reports (Admin) */}
-          <Route path="/reports" element={<RequireRole roles={['ADMIN']}><FinancialReports /></RequireRole>} />
+          <Route path="/reports"                   element={<RequireRole roles={['ADMIN']}><FinancialReports /></RequireRole>} />
+          <Route path="/reports/daily-collection"  element={<RequireRole roles={['ADMIN']}><DailyCollectionReport /></RequireRole>} />
 
           {/* Masters */}
           <Route path="/masters/doctors"       element={<RequireAuth><Doctors /></RequireAuth>} />
