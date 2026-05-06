@@ -7,6 +7,15 @@ function fmtCurrency(val) {
   return isNaN(n) ? '—' : `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function calcAge(dob) {
+  const birth = new Date(dob);
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
+}
+
 
 const INVOICE_TITLES = {
   CONSULTATION: 'OP Consultation Receipt',
@@ -21,12 +30,18 @@ export function InvoicePrintView({ invoice, visit }) {
   const invoiceType  = invoice.invoiceType ?? 'CONSULTATION';
   const receiptTitle = INVOICE_TITLES[invoiceType] ?? 'OPD Receipt';
 
-  const patientName = visit?.patient
-    ? `${visit.patient.firstName}${visit.patient.lastName ? ` ${visit.patient.lastName}` : ''}`
-    : `${invoice.patient?.firstName ?? ''}${invoice.patient?.lastName ? ` ${invoice.patient.lastName}` : ''}`;
+  const patient = visit?.patient ?? invoice.patient ?? {};
 
-  const uhid     = visit?.patient?.uhid ?? invoice.patient?.uhid ?? '—';
-  const opNumber = visit?.opNumber ?? invoice.visit?.opNumber ?? '—';
+  const patientName = patient.firstName
+    ? `${patient.firstName}${patient.lastName ? ` ${patient.lastName}` : ''}`
+    : '—';
+
+  const uhid       = patient.uhid ?? '—';
+  const opNumber   = visit?.opNumber ?? invoice.visit?.opNumber ?? '—';
+  const doctorName = visit?.doctor?.name ?? invoice.visit?.doctor?.name ?? null;
+  console.log('Patient Data in Print:', patient);
+  const age  = patient.dob ? calcAge(patient.dob) : patient.age ?? null;
+  const city = patient.city ?? patient.address ?? patient.place ?? null;
 
   // Extract the numeric queue token from the OP number.
   // Format: "DR01-20260503-042" → split on '-', take last segment "042",
@@ -105,10 +120,10 @@ export function InvoicePrintView({ invoice, visit }) {
           padding: 8px 12px;
           margin-bottom: 8px;
         }
-        .inv-band-left { display: flex; flex-direction: column; gap: 3px; }
-        .inv-band-row  { display: flex; flex-direction: column; }
-        .inv-band-label { color: #777; font-size: 7pt; text-transform: uppercase; letter-spacing: 0.5px; }
-        .inv-band-val   { font-weight: bold; color: #1a1a2e; font-size: 9pt; margin-top: 1px; }
+        .inv-band-left { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 20px; flex: 1; }
+        .inv-band-row  { display: flex; flex-direction: row; gap: 4px; align-items: baseline; white-space: nowrap; overflow: hidden; }
+        .inv-band-label { color: #777; font-size: 7.5pt; flex-shrink: 0; }
+        .inv-band-val   { font-weight: bold; color: #1a1a2e; font-size: 9pt; overflow: hidden; text-overflow: ellipsis; }
         .inv-band-right { text-align: right; }
         .inv-token-lbl  { color: #777; font-size: 7pt; text-transform: uppercase; letter-spacing: 0.5px; }
         .inv-token-num  {
@@ -214,23 +229,29 @@ export function InvoicePrintView({ invoice, visit }) {
       <div className="inv-patient-band">
         <div className="inv-band-left">
           <div className="inv-band-row">
-            <span className="inv-band-label">Patient</span>
+            <span className="inv-band-label">Patient:</span>
             <span className="inv-band-val">{patientName}</span>
           </div>
           <div className="inv-band-row">
-            <span className="inv-band-label">UHID</span>
+            <span className="inv-band-label">UHID:</span>
             <span className="inv-band-val">{uhid}</span>
           </div>
           <div className="inv-band-row">
-            <span className="inv-band-label">OP Number</span>
+            <span className="inv-band-label">Age:</span>
+            <span className="inv-band-val">{age != null ? `${age} Yrs` : '—'}</span>
+          </div>
+          <div className="inv-band-row">
+            <span className="inv-band-label">OP#:</span>
             <span className="inv-band-val">{opNumber}</span>
           </div>
-          {(invoice.visit?.doctor?.name) && (
-            <div className="inv-band-row">
-              <span className="inv-band-label">Doctor</span>
-              <span className="inv-band-val">{invoice.visit.doctor.name}</span>
-            </div>
-          )}
+          <div className="inv-band-row">
+            <span className="inv-band-label">Place:</span>
+            <span className="inv-band-val">{city ?? '—'}</span>
+          </div>
+          <div className="inv-band-row">
+            <span className="inv-band-label">Doctor:</span>
+            <span className="inv-band-val">{doctorName ? `Dr. ${doctorName}` : '—'}</span>
+          </div>
         </div>
 
         {tokenNumber !== null && (

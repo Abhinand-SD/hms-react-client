@@ -260,8 +260,8 @@ export function ComprehensivePatientForm({
                   onChange={(e) => onChange('address', e.target.value)} autoComplete="street-address" />
               </FF>
               <div className="grid grid-cols-3 gap-3">
-                <FF label="City" error={errors.city}>
-                  <input className={INP} value={formData.city ?? ''} placeholder="Kochi"
+                <FF label="City / Place" required={requiredFields.includes('city')} error={errors.city}>
+                  <input className={`${INP}${errors.city ? ' border-red-300' : ''}`} value={formData.city ?? ''} placeholder="Kochi"
                     onChange={(e) => onChange('city', e.target.value)} autoComplete="address-level2" />
                 </FF>
                 <FF label="Pincode" error={errors.pincode}>

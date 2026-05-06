@@ -24,7 +24,7 @@ function ActiveBadge({ active }) {
 
 function DoctorFormModal({ open, onClose, initial }) {
   const isEdit = !!initial;
-  const empty = { name: '', specialization: '', qualification: '', consultationFee: '', followUpFee: '', followUpValidityDays: '30', roomNo: '' };
+  const empty = { name: '', specialization: '', code: '', qualification: '', consultationFee: '', followUpFee: '', followUpValidityDays: '30', roomNo: '' };
   const [form, setForm] = useState(empty);
   const [err, setErr] = useState('');
   const [saving, setSaving] = useState(false);
@@ -35,6 +35,7 @@ function DoctorFormModal({ open, onClose, initial }) {
         ? {
             name: initial.name,
             specialization: initial.specialization,
+            code: initial.code ?? '',
             qualification: initial.qualification ?? '',
             consultationFee: initial.consultationFee,
             followUpFee: initial.followUpFee,
@@ -56,6 +57,7 @@ function DoctorFormModal({ open, onClose, initial }) {
       const payload = {
         name: form.name,
         specialization: form.specialization,
+        code: form.code || undefined,
         qualification: form.qualification || undefined,
         consultationFee: parseFloat(form.consultationFee),
         followUpFee: parseFloat(form.followUpFee),
@@ -88,12 +90,15 @@ function DoctorFormModal({ open, onClose, initial }) {
     >
       <form id="doctor-form" onSubmit={submit} className="space-y-3">
         {err && <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-600">{err}</p>}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <Field label="Full name *">
             <Input value={form.name} onChange={(e) => set('name', e.target.value)} required placeholder="Dr. Priya Sharma" />
           </Field>
           <Field label="Specialization *">
             <Input value={form.specialization} onChange={(e) => set('specialization', e.target.value)} required placeholder="Cardiology" />
+          </Field>
+          <Field label="OP Prefix Code *">
+            <Input value={form.code} onChange={(e) => set('code', e.target.value)} required placeholder="DR01" />
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-3">

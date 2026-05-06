@@ -251,6 +251,7 @@ const EMPTY = {
   selectedPatient: null,
   patientName:     '',
   mobile:          '',
+  age:             '',
   city:            '',
   doctorId:        '',
   appointmentDate: '',
@@ -304,7 +305,7 @@ export function BookAppointment({ open, onClose, initialDate = '' }) {
 
   function handlePatientSelect(p) {
     if (!p) {
-      setForm((f) => ({ ...f, selectedPatient: null, patientName: '', mobile: '', city: '' }));
+      setForm((f) => ({ ...f, selectedPatient: null, patientName: '', mobile: '', age: '', city: '' }));
     } else {
       const displayName = `${p.firstName}${p.lastName ? ` ${p.lastName}` : ''}`;
       setForm((f) => ({
@@ -312,20 +313,23 @@ export function BookAppointment({ open, onClose, initialDate = '' }) {
         selectedPatient: p,
         patientName:     displayName,
         mobile:          p.mobile || f.mobile,
+        age:             p.age != null ? String(p.age) : f.age,
         city:            p.city   || f.city,
       }));
     }
-    setErrors((e) => ({ ...e, patientName: '', mobile: '' }));
+    setErrors((e) => ({ ...e, patientName: '', mobile: '', age: '', city: '' }));
   }
 
   function validate() {
     const e = {};
     if (!form.selectedPatient && !form.patientName.trim())
       e.patientName = 'Enter a patient name or select from search.';
-    if (!form.mobile.trim())       e.mobile          = 'Mobile number is required.';
-    if (!form.doctorId)            e.doctorId        = 'Select a doctor.';
-    if (!form.appointmentDate)     e.appointmentDate = 'Date is required.';
-    if (!form.tokenNumber)         e.tokenNumber     = 'Select a token number from the grid.';
+    if (!form.mobile.trim())                    e.mobile          = 'Mobile number is required.';
+    if (form.age === '' || form.age == null)    e.age             = 'Age is required.';
+    if (!form.city.trim())                      e.city            = 'Place/City is required.';
+    if (!form.doctorId)                         e.doctorId        = 'Select a doctor.';
+    if (!form.appointmentDate)                  e.appointmentDate = 'Date is required.';
+    if (!form.tokenNumber)                      e.tokenNumber     = 'Select a token number from the grid.';
     return e;
   }
 
@@ -357,7 +361,8 @@ export function BookAppointment({ open, onClose, initialDate = '' }) {
         const { data } = await quickBookAppointment({
           patientName:     form.patientName.trim(),
           mobile:          form.mobile.trim(),
-          city:            form.city?.trim() || undefined,
+          age:             parseInt(form.age, 10),
+          city:            form.city.trim(),
           doctorId:        form.doctorId,
           appointmentDate: form.appointmentDate,
           tokenNumber:     form.tokenNumber,
@@ -430,13 +435,18 @@ export function BookAppointment({ open, onClose, initialDate = '' }) {
                   error={errors.patientName}
                 />
               </FF>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <FF label="Mobile Number" required error={errors.mobile}>
                   <input className={INP} value={form.mobile} type="tel"
                     onChange={(e) => set('mobile', e.target.value)}
                     placeholder="9876543210" />
                 </FF>
-                <FF label="City / Place">
+                <FF label="Age (years)" required error={errors.age}>
+                  <input className={INP} value={form.age} type="number" min="0" max="150"
+                    onChange={(e) => set('age', e.target.value)}
+                    placeholder="35" />
+                </FF>
+                <FF label="City / Place" required error={errors.city}>
                   <input className={INP} value={form.city}
                     onChange={(e) => set('city', e.target.value)}
                     placeholder="e.g. Kochi" />

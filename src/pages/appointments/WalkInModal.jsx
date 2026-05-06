@@ -335,10 +335,12 @@ export function WalkInModal({ open, onClose, onRequestPrint }) {
 
   function validateStep1() {
     const e = {};
-    if (!form.firstName.trim()) e.firstName = 'First name is required.';
-    if (!form.mobile.trim())    e.mobile    = 'Mobile number is required.';
-    if (!form.gender)           e.gender    = 'Select gender.';
-    if (!form.doctorId)         e.doctorId  = 'Select a doctor.';
+    if (!form.firstName.trim())              e.firstName = 'First name is required.';
+    if (!form.mobile.trim())                 e.mobile    = 'Mobile number is required.';
+    if (!form.gender)                        e.gender    = 'Select gender.';
+    if (!form.doctorId)                      e.doctorId  = 'Select a doctor.';
+    if (form.age === '' || form.age == null) e.age       = 'Age is required.';
+    if (!form.city.trim())                   e.city      = 'Place/City is required.';
     return e;
   }
 
@@ -367,9 +369,9 @@ export function WalkInModal({ open, onClose, onRequestPrint }) {
       const { data } = await walkInAppointment({
         patientName,
         mobile:                 form.mobile.trim(),
-        age:                    form.age ? parseInt(form.age, 10) : undefined,
+        age:                    parseInt(form.age, 10),
         gender:                 form.gender,
-        city:                   form.city.trim()      || undefined,
+        city:                   form.city.trim(),
         dob:                    form.dob              || undefined,
         address:                form.address.trim()   || undefined,
         state:                  form.state.trim()     || undefined,
@@ -467,6 +469,7 @@ export function WalkInModal({ open, onClose, onRequestPrint }) {
                 errors={errors}
                 autoSearch={true}
                 onPatientSelect={handlePatientSelect}
+                requiredFields={['age', 'city']}
               />
 
               {/* Doctor selection (visit-specific, not part of patient record) */}
